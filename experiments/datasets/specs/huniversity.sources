@@ -1,0 +1,18 @@
+# Helsinki UDBMS University: a College Scorecard table against a location graph.
+#
+# This is the weakest crossing in the evaluation and is here to mark where dependency profiling
+# stops being the right instrument. The publisher explicitly declares UNITID unique -- one of the
+# few declared keys in any of these corpora -- and the location graph has never heard of it. The
+# only crossing is an institution name against a place name, at 0.261 after normalisation, and
+# coordinates are weaker still.
+#
+# The relational side is a ten-column subset of the published 1,729: PostgreSQL caps a relation at
+# 1,600 columns, so the whole table cannot be loaded as one. The columns kept are the identifying
+# and locating ones, which are the only ones a cross-store correspondence here could range over.
+# That subsetting is ours and not the publisher's.
+
+postgres     pg     huniversity  scorecard
+
+# No relationship scope: the location graph has no resource-to-resource triples at all. Every
+# object is a literal, so its coordinates are node properties rather than edges.
+neo4j-label  graph  neo4j        ULocation

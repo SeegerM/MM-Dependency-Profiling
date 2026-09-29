@@ -2,8 +2,7 @@
 
 The generator ships `doc/inclusion_dependencies_graph-v2.json`, an arrows.app export in which
 entities and attributes are nodes, untyped edges mean "entity has attribute", and typed edges are
-the dependencies: `#N` for those that always hold, a bare letter for those that do not. Parsing it
-beats transcribing the README, and it keeps the oracle traceable to the upstream artifact.
+the dependencies: `#N` for those that always hold, a bare letter for those that do not.
 
 Node ids disambiguate what the captions cannot: two different entities are both captioned "Vendor",
 one being the relational table and the other the vendor sub-document nested inside an order item.

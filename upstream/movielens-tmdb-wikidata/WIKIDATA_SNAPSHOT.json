@@ -1,0 +1,27 @@
+{
+  "endpoint": "https://query.wikidata.org/sparql",
+  "completed_at": "2026-08-29T20:48:05.605442+00:00",
+  "source": {
+    "path": "data/ml-32m/links.csv",
+    "sha256": "ef17da7710be76f7d510d5768d1b61826e3af4bf57812b9ca377e4c912123b22",
+    "imdb_ids": 87585
+  },
+  "output": {
+    "path": "data/wikidata/movie-links.jsonl",
+    "sha256": "33cbb3b0bf8c870c88cc299ba0f0cb45608802e65dde894005f1b76ea421f349",
+    "bytes": 10314826,
+    "rows": 76407,
+    "invalid_json_lines": 0,
+    "unique_row_tuples": 76407,
+    "unique_imdb_ids": 76307,
+    "unique_wikidata_ids": 76348,
+    "imdb_ids_with_multiple_rows": 80
+  },
+  "coverage": {
+    "imdb_fraction": 0.871234,
+    "tmdb_exact_match_imdb_ids": 75357,
+    "tmdb_missing_on_wikidata_imdb_ids": 545,
+    "tmdb_mismatch_imdb_ids": 405
+  }
+}
+

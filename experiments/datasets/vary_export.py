@@ -1,9 +1,7 @@
 """Applies one controlled, isolated change to a meta-level export.
 
-The Heterogeneity Profile reports several components, and showing that they move is not the same as
-showing that each measures what it names. This script provides the knobs for that: each mode
-changes exactly one kind of heterogeneity and leaves the others alone, so the profile can be tested
-component by component.
+Each mode changes exactly one kind of heterogeneity and leaves the others alone, so the
+Heterogeneity Profile can be calibrated component by component.
 
   rename        renames a fraction of one store's extractors. The values are untouched, so every
                 dependency still holds; only the vocabulary differs.
@@ -11,8 +9,7 @@ component by component.
                 untouched, but the merged scope repeats the referenced side's attributes once per
                 referencing row, which is what a lower degree of normalization means.
 
-Value-level variation has its own script, experiments/datasets/perturb_export.py, because it is
-also used on its own by the similarity sweep.
+Value-level variation is handled by experiments/datasets/perturb_export.py.
 
 usage: vary_export.py <sourceExport> <targetExport> --mode=rename --store=relational --rate=1.0
        vary_export.py <sourceExport> <targetExport> --mode=denormalize
@@ -64,9 +61,7 @@ def write(path, columns, rows):
 def rename_mode(entries):
     """A store-local vocabulary: renamed extractors carry a prefix, values are untouched.
 
-    Prefixing rather than substituting synonyms keeps the change unambiguous -- every renamed
-    extractor is renamed, none accidentally collides with a name used elsewhere -- which is what a
-    calibration knob needs.
+    A prefix rather than synonyms guarantees no renamed extractor collides with an existing name.
     """
     rng = random.Random(SEED)
     renamed = total = 0

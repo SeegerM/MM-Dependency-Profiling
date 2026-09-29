@@ -1,0 +1,18 @@
+# MovieLens + TMDB + Wikidata: the sources ExportSources lifts to the meta level.
+#
+# Each line names a source in the store its publisher already ships it for, so the model
+# assignment here records where the data came from rather than a choice we made.
+
+# MovieLens publishes these four as relational CSVs.
+postgres     pg     movielens  movies
+postgres     pg     movielens  links
+postgres     pg     movielens  tags
+postgres     pg     movielens  ratings
+
+# TMDB publishes its daily identifier export as newline-delimited JSON.
+mongo        mongo  tmdb       movies
+
+# The Wikidata slice is an entity graph keyed by Q-identifier. Its two MovieLens identifier
+# fields are lists, which the exporter lifts to scopes of their own; there are no edges, so no
+# neo4j-rels line belongs here.
+neo4j-label  graph  neo4j      WikidataFilm

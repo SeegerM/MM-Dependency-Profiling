@@ -1,0 +1,20 @@
+# Helsinki UDBMS Film: an IMDb document dump against two independently built graphs.
+#
+# There is no relational side; the publisher ships none. What this instance carries that Patent and
+# Person do not is a correspondence that a comparison relation improves and does not repair. A film
+# title normalises onto a graph subject the way a person's page title does -- spaces to underscores,
+# case folded -- but where Person reaches 0.999967 this reaches 0.419 against DBpedia and 0.194
+# against YAGO. The residue is not a threshold away: the dump holds duplicate and conflicting
+# records for one film, and a title identifies a film only loosely.
+#
+# Two graphs rather than one, because they disagree. DBpedia and YAGO name the same films by
+# different conventions, so the instance shows the same document side reaching two graphs at
+# different degrees -- a property of the graphs rather than of the method.
+
+mongo        mongo  hfilm  films
+
+neo4j-label  graph  neo4j  FilmDBpedia
+neo4j-label  graph  neo4j  FilmYago
+
+neo4j-rels   graph  neo4j  DBPEDIA
+neo4j-rels   graph  neo4j  YAGO

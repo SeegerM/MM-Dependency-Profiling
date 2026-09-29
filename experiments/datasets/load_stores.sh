@@ -1,18 +1,16 @@
 #!/usr/bin/env bash
 # Loads the generated three-model dataset into the running containers.
 #
-# Tables/collections/labels are named distinctly from the toy seed data the compose init scripts
-# create, so both can coexist; the discovery run addresses only the ones named here.
+# The containers start empty (docker-compose.yml); every table, collection and label read by the
+# discovery run is created here.
 set -euo pipefail
 
-# Git Bash rewrites arguments that look like absolute POSIX paths into Windows paths before the
-# process sees them, which turns a container path like /tmp/x.json into C:/Users/.../x.json.
+# Stop Git Bash from rewriting container paths such as /tmp/x.json into Windows paths.
 export MSYS_NO_PATHCONV=1
 export MSYS2_ARG_CONV_EXCL='*'
 
-source "$(dirname "$0")/../../config/paths.env"
-# The dataset directory is an argument so the scalability runner can point at each size in
-# turn; it defaults to the one build_dataset.py writes without arguments.
+source "$(dirname "$0")/../../config/env.sh"
+# The dataset directory is an argument so the scalability runner can load each size in turn.
 DATA="${1:-$WORK_ROOT/mm_tpch}"
 
 echo "=== PostgreSQL: customer, nation, region ==="
@@ -79,12 +77,12 @@ CYPHER
 
 docker cp "$DATA/neo4j_supplies.csv" spind-neo4j:/var/lib/neo4j/import/supplies.csv
 
-# partsupp as an edge carrying its own attributes. This is the one relationship shape a relational
-# schema can express only as a table, so it is what lets the layout comparison cover edges as well
-# as embedded arrays. Endpoints are matched on the keys the nodes already carry.
+# partsupp as a SUPPLIES edge carrying its own attributes, matched on the node keys.
 docker exec -i spind-neo4j cypher-shell -u neo4j -p testpassword <<'CYPHER'
-CREATE INDEX part_key IF NOT EXISTS FOR (p:Part) ON (p.p_partkey);
-CREATE INDEX supplier_key IF NOT EXISTS FOR (s:Supplier) ON (s.s_suppkey);
+// Constraints rather than plain indexes: the meta-level export projects edge endpoints through
+// the properties a label declares unique, and a constraint also creates a backing index.
+CREATE CONSTRAINT part_key IF NOT EXISTS FOR (p:Part) REQUIRE p.p_partkey IS UNIQUE;
+CREATE CONSTRAINT supplier_key IF NOT EXISTS FOR (s:Supplier) REQUIRE s.s_suppkey IS UNIQUE;
 CYPHER
 
 docker exec -i spind-neo4j cypher-shell -u neo4j -p testpassword <<'CYPHER'

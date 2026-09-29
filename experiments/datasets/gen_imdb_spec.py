@@ -1,18 +1,11 @@
 """Generates a multi-model conversion spec for IMDB's full schema.
 
-The MusicBrainz counterpart derives its spec from a foreign-key list the corpus ships. IMDB ships
-no such file, so the keys below are transcribed from IMDb's published dataset documentation. That
-is a weaker provenance and is stated as such: the oracle is a documented schema rather than a
-machine-readable one, and it is small enough to be checked by reading it.
+IMDB ships no machine-readable foreign-key list, so the keys below are transcribed from IMDb's
+published dataset documentation. Three of them are collection-valued (comma-separated identifier
+lists: directors, writers, knownForTitles).
 
-What IMDB offers that MusicBrainz does not is collection-valued foreign keys occurring naturally.
-Three of the ten declared keys are comma-separated lists of identifiers -- a title's directors and
-writers, and the titles a person is known for. Each is a foreign key that a single-relation adapter
-observes as one literal and therefore cannot find at any threshold.
-
-Whole tables only, up to a size cap, for the same reason as MusicBrainz: IMDB's title and name
-tables reference each other in both directions, so a sampled instance has no referential closure
-short of a fixpoint that expands to the entire corpus.
+Tables are taken whole up to a size cap: title and name reference each other in both directions,
+so a sampled instance cannot be made referentially closed.
 
 usage: gen_imdb_spec.py [--cap-mb=900] [--out=specs/imdb-full.json]
 """
@@ -35,10 +28,8 @@ def flag(name, default):
 CAP = int(flag("cap-mb", "900")) * 1024 * 1024
 OUT = Path(flag("out", str(HERE / "specs" / "imdb-full.json")))
 
-# Store assignment follows what each table is. Titles are entities; crew and episode are
-# relationships between titles and people or between titles and their parents, i.e. edges; a person
-# carries two list-valued fields and is the one entity a document store holds naturally; ratings
-# and alternative titles are flat attribute tables.
+# Titles, crew and episodes go to the graph; persons, with two list-valued fields, to the
+# document store; ratings, alternative titles and principals are flat relational tables.
 TABLES = {
     "basics": {"store": "graph", "relation": "neo4j:Title",
                "arrays": {"genres": ","}},

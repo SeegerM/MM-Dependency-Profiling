@@ -1,0 +1,59 @@
+{
+ "source": "Helsinki UDBMS Film dataset: IMDb metadata dump, DBpedia and YAGO graphs",
+ "name": "hfilm",
+ "note": "No correspondence between the dump and either graph is declared; every entry is reconstructed. The document-to-graph entries are listed because they exist in the world and are not recoverable as dependencies: normalising titles reaches 0.419 against DBpedia and 0.194 against YAGO, and the residue is entity resolution.",
+ "dependencies": [
+  {
+   "dependent": "hfilm.films.title",
+   "referenced": "neo4j:FilmDBpedia.id",
+   "models": "document -> graph",
+   "cross_model": true,
+   "provenance": "reconstructed",
+   "oracle_kind": "correspondence",
+   "arity": 1,
+   "degree": 0.046041,
+   "evidence": "the same film named two ways; 0.419 after normalisation, unreachable as an inclusion"
+  },
+  {
+   "dependent": "hfilm.films.title",
+   "referenced": "neo4j:FilmYago.id",
+   "models": "document -> graph",
+   "cross_model": true,
+   "provenance": "reconstructed",
+   "oracle_kind": "correspondence",
+   "arity": 1,
+   "degree": 0.020023,
+   "evidence": "as above against the second graph, at 0.194"
+  },
+  {
+   "dependent": "neo4j:FilmYago.id",
+   "referenced": "neo4j:FilmDBpedia.id",
+   "models": "graph -> graph",
+   "cross_model": false,
+   "provenance": "reconstructed",
+   "arity": 1,
+   "degree": 0.819503,
+   "evidence": "both graphs name films by the same Wikipedia-style convention"
+  },
+  {
+   "dependent": "neo4j:-[DBPEDIA]->.source.id",
+   "referenced": "neo4j:FilmDBpedia.id",
+   "models": "graph -> graph",
+   "cross_model": false,
+   "provenance": "reconstructed",
+   "arity": 1,
+   "degree": 1.0,
+   "evidence": "an edge starts at a node of its own graph"
+  },
+  {
+   "dependent": "neo4j:-[YAGO]->.source.id",
+   "referenced": "neo4j:FilmYago.id",
+   "models": "graph -> graph",
+   "cross_model": false,
+   "provenance": "reconstructed",
+   "arity": 1,
+   "degree": 1.0,
+   "evidence": "an edge starts at a node of its own graph"
+  }
+ ]
+}

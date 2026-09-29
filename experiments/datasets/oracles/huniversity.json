@@ -1,0 +1,29 @@
+{
+ "source": "Helsinki UDBMS University dataset: College Scorecard table and location graph",
+ "name": "huniversity",
+ "note": "The publisher declares UNITID unique and the location graph does not carry it. The only crossing is an institution name against a place name, at 0.261 after normalisation, and coordinates are weaker still. Both entries are listed as correspondences that exist and are not statable as dependencies; discovery reports nothing at rho = 0.5, which is the correct outcome rather than a failure.",
+ "dependencies": [
+  {
+   "dependent": "huniversity.scorecard.instnm",
+   "referenced": "neo4j:ULocation.id",
+   "models": "relational -> graph",
+   "cross_model": true,
+   "provenance": "reconstructed",
+   "oracle_kind": "correspondence",
+   "arity": 1,
+   "degree": 0.0,
+   "evidence": "an institution name against a place name; 0.261 after normalisation"
+  },
+  {
+   "dependent": "huniversity.scorecard.latitude",
+   "referenced": "neo4j:ULocation.latitude",
+   "models": "relational -> graph",
+   "cross_model": true,
+   "provenance": "reconstructed",
+   "oracle_kind": "correspondence",
+   "arity": 1,
+   "degree": 0.225246,
+   "evidence": "coordinates rounded differently by the two publishers"
+  }
+ ]
+}

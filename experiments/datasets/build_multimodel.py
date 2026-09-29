@@ -1,32 +1,23 @@
 """Converts a single-model corpus into a multi-model instance, driven by a declarative spec.
 
-The TPC-H generator in build_dataset.py and the clean/dirty generator in build_dirty_dataset.py are
-two instances of one pattern: choose relations, assign each to a data model, turn delimited fields
-and child tables into nested scopes, and keep the source's foreign keys as ground truth. This is
-that pattern factored out, so a corpus with a documented schema can be converted by writing a spec
-rather than a program.
+Chooses relations, assigns each to a data model, turns delimited fields and child tables into
+nested scopes, and keeps the source's foreign keys as ground truth.
 
-What a spec has to say, and why:
+Spec fields:
 
   anchor        which table bounds the instance, and how many of its rows to take. Every other
                 table is restricted to rows referencing those, so the result is referentially
                 closed and every declared dependency still holds on the subset.
   key_sets      further key sets derived from earlier ones, for schemas where closure runs through
-                more than one hop. Restricting a real corpus to one key set is rarely enough:
-                keeping the credits of a chosen set of releases means also keeping the artists
-                those credits name, and the areas those artists sit in.
+                more than one hop (e.g. releases -> credited artists -> their areas).
   tables        for each source table, the store it goes to and the columns to keep.
-  arrays        a delimited field becomes its own scope, one observation per element. This is
-                where real corpora already contain what the paper argues about: IMDB's
-                knownForTitles is a comma-separated list of title identifiers, i.e. a
-                collection-valued foreign key.
-  nest          a child table embedded into a parent as an array scope, the way a document store
-                would hold it rather than as a separate relation.
+  arrays        a delimited field becomes its own scope, one observation per element (e.g. IMDB's
+                comma-separated knownForTitles, a collection-valued foreign key).
+  nest          a child table embedded into a parent as an array scope.
   dependencies  the source schema's foreign keys, carried over as the oracle.
 
-The output is a meta-level export -- one CSV per scope plus a catalog -- which is what every
-runner here consumes. Writing it directly rather than loading the three stores and exporting them
-back keeps a conversion independent of docker; the store round trip is exercised elsewhere.
+The output is a meta-level export (one CSV per scope plus a catalog), written directly without
+loading the stores.
 
 usage: build_multimodel.py <spec.json> [outDir] [--rows=N]
 """
@@ -37,10 +28,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import paths
+import masked_scope
 
 SPEC = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 POSITIONAL = [a for a in sys.argv[2:] if not a.startswith("--")]
 ROWS = next((int(a.split("=")[1]) for a in sys.argv if a.startswith("--rows=")), None)
+DEFINEDNESS = '--definedness' in sys.argv
 
 SOURCE = paths.DATA_ROOT / SPEC["source"]
 OUT = Path(POSITIONAL[0]) if POSITIONAL else paths.WORK_ROOT / SPEC["name"] / "metalevel"
@@ -54,7 +47,7 @@ csv.field_size_limit(1 << 30)
 
 
 def clean(value):
-    return "" if value in NULLS else value
+    return (None if DEFINEDNESS else "") if value in NULLS else value
 
 
 def read_table(name, limit=None, keep=None):
@@ -63,7 +56,7 @@ def read_table(name, limit=None, keep=None):
     corpus's own foreign-key metadata uses when the dump carries no names."""
     declared = SPEC["tables"][name].get("source_columns")
     path = SOURCE / f"{name}{SUFFIX}"
-    with path.open(encoding="utf-8", errors="replace", newline="") as handle:
+    with path.open(encoding="utf-8", errors="strict" if DEFINEDNESS else "replace", newline="") as handle:
         reader = csv.reader(handle, delimiter=DELIMITER, quoting=csv.QUOTE_NONE)
         header = next(reader) if HAS_HEADER else None
         columns = declared or header
@@ -81,7 +74,13 @@ def read_table(name, limit=None, keep=None):
 
 
 def write(relation, store, scope, columns, rows, catalog):
-    file_name = relation.replace(":", "_").replace("@", "_at_") + ".csv"
+    file_name = relation.replace(":", "_").replace("@", "_at_") + (".mscope" if DEFINEDNESS else ".csv")
+    if DEFINEDNESS:
+        masked_scope.write(OUT/file_name,columns,([row.get(c) for c in columns] for row in rows))
+        catalog.append({"relation":relation,"store":store,"scope":scope,"rows":len(rows),
+                        "columns":len(columns),"file":file_name})
+        print(f"  {relation:<34} {store:<11} {len(rows):>9,} rows x {len(columns)}",flush=True)
+        return
     with (OUT / file_name).open("w", encoding="utf-8", newline="") as handle:
         writer = csv.writer(handle)
         writer.writerow(columns)
@@ -117,12 +116,10 @@ def main():
             value = row.get(column, "")
             if not split:
                 return value in target
-            # A restricting column may itself be a delimited list. "any" keeps a row when one
-            # element lands inside the key set, which does *not* close the instance: the row's
-            # other elements still reference rows outside it, and the foreign key then reads as
-            # partial for a reason that is an artifact of sampling rather than a property of the
-            # data. "all" is what keeps the promise the anchor makes.
-            parts = [p for p in value.split(split) if p]
+            # A restricting column may itself be a delimited list. "all" keeps the instance
+            # referentially closed; "any" does not, so the foreign key can read as partial
+            # purely because of sampling.
+            parts = [p for p in (value or "").split(split) if p]
             return bool(parts) and (all if mode == "all" else any)(p in target for p in parts)
         return test
 
@@ -149,9 +146,8 @@ def main():
         limit = anchor_rows if name == anchor["table"] else table.get("limit")
         rows = list(read_table(name, keep=keep, limit=limit))
 
-        # A table that exists only to be nested into a parent contributes no scope of its own.
-        # Emitting one anyway would duplicate every value and manufacture inclusions between the
-        # two copies -- the same artifact the parent reference produces in MetaLevelExporter.
+        # A table that exists only to be nested into a parent contributes no scope of its own;
+        # emitting one would duplicate every value and create inclusions between the copies.
         if table.get("skip_own_scope"):
             continue
 
@@ -204,5 +200,52 @@ def main():
     print(f"{len(SPEC['dependencies'])} declared dependencies, {cross} of them cross-model")
 
 
+def stream_full_definedness():
+    """Unrestricted full snapshots need no in-memory anchor or table materialization."""
+    from contextlib import ExitStack
+    OUT.mkdir(parents=True,exist_ok=True); catalog=[]
+    for name,table in SPEC['tables'].items():
+        if table.get('skip_own_scope'): continue
+        relation=table['relation']; arrays=table.get('arrays',{})
+        base=[c for c in table['columns'] if c not in arrays]
+        definitions=[(relation,table.get('scope','base'),base)]
+        definitions += [(relation+'@'+c,c,[c]) for c in arrays]
+        with ExitStack() as stack:
+            outputs=[]
+            for rel,scope,cols in definitions:
+                file=rel.replace(':','_').replace('@','_at_')+'.mscope'
+                stream=stack.enter_context((OUT/file).open('w',encoding='utf-8',newline=''))
+                writer=csv.writer(stream,quoting=csv.QUOTE_ALL,lineterminator='\n')
+                writer.writerow(['#multimodel-scope-v2','defined',*cols])
+                outputs.append([writer,0,dict(relation=rel,scope=scope,store=table['store'],columns=len(cols),file=file)])
+            def emit(index,values):
+                output=outputs[index]
+                output[0].writerow([output[1],''.join('0' if v is None else '1' for v in values),
+                                   *('' if v is None else v for v in values)])
+                output[1]+=1
+            for row in read_table(name,limit=table.get('limit')):
+                emit(0,[row.get(c) for c in base])
+                for index,(column,options) in enumerate(arrays.items(),1):
+                    value=row.get(column)
+                    if value:
+                        for part in value.split(options['split']):
+                            if part.strip(): emit(index,[part.strip()])
+            for _,count,entry in outputs:
+                entry['rows']=count; catalog.append(entry)
+                print(entry['relation'],count,flush=True)
+    (OUT/'catalog.json').write_text(json.dumps(catalog,indent=2),encoding='utf-8')
+
 if __name__ == "__main__":
-    main()
+    unrestricted=not (ROWS or SPEC['anchor'].get('rows') or SPEC.get('key_sets')) and all(
+        not t.get('restrict_by') and not t.get('nest') for t in SPEC['tables'].values())
+    if DEFINEDNESS and unrestricted: stream_full_definedness()
+    else: main()
+    if DEFINEDNESS:
+        (OUT/'source-policy.json').write_text(json.dumps(dict(source=str(SOURCE),spec=str(Path(sys.argv[1]).resolve()),
+            missing_markers=sorted(NULLS),delimiter=DELIMITER,header=HAS_HEADER,
+            scalar_policy='Preserve source strings except declared missing markers; strict UTF-8 decoding',
+            array_policy='Existing declared split and nonempty stripped elements',
+            source_kind='raw-source-conversion'),indent=2),encoding='utf-8')
+        if unrestricted:
+            (OUT.parent/'ground_truth.json').write_text(json.dumps(dict(source=SPEC['source'],name=SPEC['name'],
+                dependencies=SPEC['dependencies']),indent=2),encoding='utf-8')

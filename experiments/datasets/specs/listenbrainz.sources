@@ -1,0 +1,17 @@
+# ListenBrainz: the sources ExportSources lifts to the meta level.
+#
+# Three parts, three publishers' shapes. The MusicBrainz identifier joins them and is declared
+# nowhere between the three dumps.
+
+# Popularity aggregates, published as CSV.
+postgres     pg     listenbrainz  top_recording
+postgres     pg     listenbrainz  mlhd_top_recording
+
+# The listen events. Nested three levels deep, with an artist-identifier array, and with contents
+# that vary per record because what a submitting client reports is up to the client. This is where
+# the array and nested-path scopes come from.
+mongo        mongo  listenbrainz  listens
+
+# The artist cache, one entity per artist, carrying a Wikidata URL among its relationships. No
+# edges: the dump relates artists to other sites rather than to each other.
+neo4j-label  graph  neo4j         LBArtist

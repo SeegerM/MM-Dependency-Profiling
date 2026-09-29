@@ -1,0 +1,19 @@
+# Helsinki UDBMS Patent: the sources ExportSources lifts to the meta level.
+#
+# Five relational tables and one citation edge type, which is the split the publisher ships.
+# There is no document line because this dataset has no document half.
+
+postgres     pg     hpatent  patent
+postgres     pg     hpatent  inventor
+postgres     pg     hpatent  assignee
+postgres     pg     hpatent  class
+postgres     pg     hpatent  category
+
+# The nodes carry only an identifier: the citation edge list is what the graph half contributes,
+# and every patent attribute lives in the relational half. Nodes exist for identifiers the
+# relational table does not have, which is where the cited endpoint's partial degree comes from.
+neo4j-label  graph  neo4j    HPatent
+
+# One relationship type, CITES. Its two endpoints reference the same relational key and hold to
+# very different degrees; that asymmetry is the reason this instance is here.
+neo4j-rels   graph  neo4j    CITES

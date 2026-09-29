@@ -1,20 +1,16 @@
 """Injects controlled syntactic variation into one store of a meta-level export.
 
-The clean UniBench instance records the same entity identically in every store, so equality
-matching suffices and similarity matching has nothing to add. That is a property of the generator,
-not of multi-model data: when two systems record the same real-world entity independently, their
-spellings diverge. This script reproduces that divergence at a known rate so the two matching
-relations can be compared on the same dependencies.
+Spelling mode: a fraction of the distinct values in one store's non-identifier columns receives
+one single-character edit, so edit distance 1 suffices to match them again. Perturbation is per
+distinct value, so a store spells a value the same way consistently.
 
-The perturbation is applied per *distinct value*, not per occurrence. A store that spells a vendor
-differently spells it that way consistently; perturbing occurrences independently would model a
-store with random noise inside a single column, which is a different and less interesting failure.
-
-Each selected value receives exactly one single-character edit, so edit distance 1 suffices to
-match it again. That makes the experiment a test of whether the pipeline uses the similarity
-measure correctly, not a test of how large tau must be.
+Transform mode: every value of one column (--relation, --column) is rewritten by a transformation
+from experiments/lib/transforms.py (registry prefix, zero-padding, letter case, unit or currency
+conversion), so it no longer matches its counterpart in another store under equality.
 
 usage: perturb_export.py <sourceExport> <targetExport> <rate> [--store=graph] [--seed=N]
+       perturb_export.py <sourceExport> <targetExport> --transform=<spec> --relation=<r> --column=<c>
+                         [--decimals=N]
 """
 import csv
 import json
@@ -24,15 +20,17 @@ import string
 import sys
 from pathlib import Path
 
-SOURCE = Path(sys.argv[1])
-TARGET = Path(sys.argv[2])
-RATE = float(sys.argv[3])
-STORE = next((a.split("=", 1)[1] for a in sys.argv[1:] if a.startswith("--store=")), "graph")
-SEED = int(next((a.split("=", 1)[1] for a in sys.argv[1:] if a.startswith("--seed=")), "20260823"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+import transforms  # noqa: E402
 
-# Identifier-like columns are left alone. Divergent spelling is a property of names and free text
-# recorded by people; a surrogate key is copied between systems, not retyped. Perturbing those
-# would inflate the effect with a kind of variation the motivation does not claim exists.
+SOURCE = TARGET = RATE = STORE = SEED = None
+
+
+def flag(name, default=None):
+    prefix = f"--{name}="
+    return next((a[len(prefix):] for a in sys.argv[1:] if a.startswith(prefix)), default)
+
+# Identifier-like columns are left alone: surrogate keys are copied between systems, not retyped.
 IDENTIFIER_HINTS = ("_id", "id", "ids")
 
 
@@ -66,7 +64,61 @@ def edit(value, rng):
     return value[:position] + value[position + 1:] if len(value) > 1 else value
 
 
+def transform_column(source, target, transform, relation, column, decimals=None):
+    """Copies an export with every value of relation.column rewritten by `transform`.
+
+    Returns the number of distinct values changed. Other scopes are copied unchanged; the catalog
+    is copied as is, since the column keeps its name and the scope its row count.
+    """
+    if target.exists():
+        shutil.rmtree(target)
+    target.mkdir(parents=True)
+    entries = json.loads((source / "catalog.json").read_text(encoding="utf-8"))
+    shutil.copyfile(source / "catalog.json", target / "catalog.json")
+    changed = set()
+    found = False
+    for entry in entries:
+        src, dst = source / entry["file"], target / entry["file"]
+        if entry["relation"] != relation:
+            shutil.copyfile(src, dst)
+            continue
+        with src.open(encoding="utf-8", newline="") as handle:
+            reader = csv.reader(handle)
+            header = next(reader)
+            rows = list(reader)
+        if column not in header:
+            raise SystemExit(f"{relation} has no column {column}")
+        found = True
+        i = header.index(column)
+        with dst.open("w", encoding="utf-8", newline="") as handle:
+            writer = csv.writer(handle)
+            writer.writerow(header)
+            for row in rows:
+                if i < len(row) and row[i] != "":
+                    new = transforms.apply(transform, row[i], decimals)
+                    if new is not None and new != row[i]:
+                        changed.add(row[i])
+                        row[i] = new
+                writer.writerow(row)
+    if not found:
+        raise SystemExit(f"no scope {relation} in {source}")
+    return len(changed)
+
+
 def main():
+    global SOURCE, TARGET, RATE, STORE, SEED
+    SOURCE, TARGET = Path(sys.argv[1]), Path(sys.argv[2])
+    if flag("transform"):
+        # Separate flags: relation and column names may both contain dots
+        # (relation shop.orders@lineitems, column lineitems.l_partkey).
+        relation, column = flag("relation"), flag("column")
+        decimals = int(flag("decimals")) if flag("decimals") else None
+        n = transform_column(SOURCE, TARGET, transforms.parse(flag("transform")), relation, column, decimals)
+        print(f"{relation}.{column} rewritten by {flag('transform')}: {n} distinct values -> {TARGET}")
+        return
+    RATE = float(sys.argv[3])
+    STORE = flag("store", "graph")
+    SEED = int(flag("seed", "20260823"))
     rng = random.Random(SEED)
     if TARGET.exists():
         shutil.rmtree(TARGET)

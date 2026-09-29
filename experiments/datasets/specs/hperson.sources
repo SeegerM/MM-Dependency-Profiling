@@ -1,0 +1,22 @@
+# Helsinki UDBMS Person: document and graph, which is the split the publisher ships.
+#
+# There is no relational side. Patent has one and Person does not, and manufacturing it by moving
+# the page collection into PostgreSQL would be exactly the design decision these instances exist to
+# avoid: what makes them evidence is that nobody here chose which model holds what.
+#
+# The correspondence this instance carries is a *natural identifier* rather than a registry key.
+# A page title in the document side names the same entity as a subject in the graph, spelled
+# differently -- "Henry Standing Bear" against "Henry_Standing_Bear" -- so it holds at 0.0089 under
+# equality and 0.999967 once spaces and underscores are treated alike. Patent offers no such case;
+# there, equality suffices. Both spellings happen to be present on the document side, so the same
+# fact is reachable under equality through `normalized_from` and only under a comparison relation
+# through `title`, which is what makes it a controlled comparison rather than an anecdote.
+
+mongo        mongo  hperson  pages
+
+neo4j-label  graph  neo4j    HPerson
+
+# The triple store's predicates, exported as one relationship scope. Objects that are RDF literals
+# were set aside at build time: a literal is a value, not an entity, and 608,081 of this file's
+# triples have one, so admitting them would fill the graph with values masquerading as nodes.
+neo4j-rels   graph  neo4j    MENTIONS

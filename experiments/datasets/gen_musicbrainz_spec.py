@@ -1,18 +1,12 @@
 """Generates a multi-model conversion spec for MusicBrainz from its own foreign-key metadata.
 
-Writing 150 table declarations by hand would be transcription, and transcription is where oracles
-acquire errors. The corpus ships a foreign-key list; this derives the spec from it, so the oracle
-and the instance cannot drift apart.
+Deriving the spec from the corpus's shipped foreign-key list keeps the oracle and the instance
+consistent.
 
-Three decisions are encoded here, and each is a claim the reader can check.
+*Which tables.* Whole tables only, up to a size cap, because a sample of a schema with hundreds of
+foreign keys cannot easily be kept referentially closed.
 
-*Which tables.* Whole tables only, up to a size cap. Sampling a schema with hundreds of foreign
-keys cannot be made referentially closed by any simple rule, and an unclosed sample turns exact
-dependencies into partial ones for reasons that belong to the sampling rather than to the data --
-the failure already recorded for IMDB's knownForTitles. Taking a table entirely avoids the question.
-
-*Which store.* MusicBrainz names its tables by role, so the assignment can follow the schema's own
-vocabulary rather than our preference:
+*Which store.* Assigned by MusicBrainz's table naming:
 
     l_<a>_<b>                     relationship tables, i.e. edges          -> graph
     <e>_alias / _annotation /     multi-valued satellites of one entity,
@@ -20,9 +14,7 @@ vocabulary rather than our preference:
     _gid_redirect
     everything else                                                        -> relational
 
-*Column names.* Positional, column1..columnN, which is exactly how the shipped foreign-key list
-names them. Using the documented schema names instead would mean asserting an alignment nothing in
-the dump verifies.
+*Column names.* Positional, column1..columnN, matching the shipped foreign-key list.
 
 usage: gen_musicbrainz_spec.py [--cap-mb=200] [--out=specs/musicbrainz-full.json] [--nest-aliases]
 """
@@ -79,9 +71,8 @@ def main():
     usable = [k for k in keys
               if k["fk_table"] in included and k["pk_table"] in included]
 
-    # Aliases are nested into the entity they describe, which is the one satellite family whose
-    # document reading is unambiguous. The link column is not guessed: it is the foreign key from
-    # the alias table to its parent, taken from the same metadata.
+    # Aliases are nested into the entity they describe, linked by the alias table's foreign key
+    # to its parent from the same metadata.
     nested = {}
     if NEST_ALIASES:
         for key in usable:

@@ -70,9 +70,8 @@ GRAPH_PART_FIELDS = ("p_partkey", "p_name", "p_mfgr", "p_brand", "p_type", "p_si
                      "p_container", "p_retailprice")
 GRAPH_SUPPLIER_FIELDS = ("s_suppkey", "s_name", "s_address", "s_nationkey",
                          "s_phone", "s_acctbal")
-# partsupp is a relationship that carries attributes, which is the one shape a relational schema
-# can only express as a table and a graph expresses natively as an edge. Modelling it as a
-# SUPPLIES edge is what lets the layout comparison cover edges as well as arrays.
+# partsupp is a relationship with attributes: a table in the relational layout, a SUPPLIES edge
+# in the graph, so the layout comparison covers edges as well as arrays.
 GRAPH_PARTSUPP_FIELDS = ("ps_partkey", "ps_suppkey", "ps_availqty", "ps_supplycost")
 
 
@@ -101,13 +100,9 @@ def write_relational_baseline(orders, lineitems_by_order, customers, nations, re
                               parts, suppliers, partsupps):
     """Writes the same data as seven flat relations, plus a catalog the runners can read.
 
-    This is the control for the multi-model setting: identical values, identical attribute sets,
-    laid out the way a single relational store would hold them. The one deliberate asymmetry is
-    l_orderkey. Normalization has to materialize the order-to-line-item relationship as a foreign
-    key; nesting expresses it structurally and therefore carries no such attribute. That single
-    column is the whole difference in extractor count between the two settings, and it is the
-    reason an inter-model dependency involving the array scope needs a join-induced scope rather
-    than a plain one.
+    This is the control for the multi-model setting: identical values and attribute sets, laid out
+    as a single relational store would hold them. The one asymmetry is l_orderkey, which
+    normalization needs as a foreign key while nesting expresses the relationship structurally.
     """
     out = OUT_DIR / "rel"
     out.mkdir(parents=True, exist_ok=True)
@@ -187,16 +182,11 @@ def main():
     dropped = set(droppable[:int(len(droppable) * DROP_FRACTION)])
     customers = [c for c in customers if c["c_custkey"] not in dropped]
 
-    # Coverage of the document->relational key depends on the scope the extractor observes values
-    # in, and the two readings genuinely differ:
-    #
+    # Coverage of the document->relational key depends on the extractor's scope:
     #   document scope   - one observation per order
-    #   array-item scope - one observation per embedded lineitem, because exploding the array
-    #                      repeats every parent field once per element
-    #
-    # Under duplicate-aware semantics the multiplicities differ, so the same dependency has two
-    # different coverage values. The adapter currently explodes the array, i.e. it implements the
-    # array-item scope, and that is the figure discovery must be checked against.
+    #   array-item scope - one observation per embedded lineitem (exploding the array repeats
+    #                      every parent field once per element)
+    # The adapter explodes the array, so the array-item figure is the expected coverage.
     lineitem_counts = {k: max(1, len(v)) for k, v in lineitems_by_order.items()}
     covered_orders = sum(1 for o in orders if o["o_custkey"] not in dropped)
     coverage_document_scope = covered_orders / len(orders)
@@ -216,11 +206,9 @@ def main():
 
     with (OUT_DIR / "mongo_orders.json").open("w", encoding="utf-8") as handle:
         for order in orders:
-            # The order key becomes the document identity, which is how the collection would
-            # actually be modelled. Leaving mongoimport to mint an ObjectId instead would add an
-            # attribute with no counterpart in the source data: unique by construction, so it
-            # would contribute a spurious UCC and act as a trivial determinant in every FD,
-            # inflating exactly the counts the relational/multi-model comparison reports.
+            # The order key becomes the document identity. A minted ObjectId would add an
+            # attribute with no source counterpart, contributing a spurious UCC and a trivial
+            # determinant to every FD.
             document = {"_id": order["o_orderkey"]}
             document.update({k: v for k, v in order.items() if k != "o_orderkey"})
             document["lineitems"] = [
@@ -244,9 +232,9 @@ def main():
              "models": "document -> relational", "expected_coverage": round(custkey_coverage, 6),
              "coverage_under_document_scope": round(coverage_document_scope, 6),
              "note": "partiality injected by deleting customers; coverage is scope-dependent"},
-            {"dependent": "shop.orders.lineitems.l_partkey", "referenced": "neo4j:Part.p_partkey",
+            {"dependent": "shop.orders@lineitems.lineitems.l_partkey", "referenced": "neo4j:Part.p_partkey",
              "models": "document -> graph", "expected_coverage": 1.0},
-            {"dependent": "shop.orders.lineitems.l_suppkey", "referenced": "neo4j:Supplier.s_suppkey",
+            {"dependent": "shop.orders@lineitems.lineitems.l_suppkey", "referenced": "neo4j:Supplier.s_suppkey",
              "models": "document -> graph", "expected_coverage": 1.0},
             {"dependent": "neo4j:Supplier.s_nationkey", "referenced": "public.nation.n_nationkey",
              "models": "graph -> relational", "expected_coverage": 1.0},
@@ -254,6 +242,14 @@ def main():
              "models": "relational -> relational", "expected_coverage": 1.0},
             {"dependent": "public.nation.n_regionkey", "referenced": "public.region.r_regionkey",
              "models": "relational -> relational", "expected_coverage": 1.0},
+            # partsupp is loaded as the SUPPLIES edge, so its two declared foreign keys surface
+            # as projections of the edge's endpoints rather than under their relational names.
+            {"dependent": "neo4j:-[SUPPLIES]->.target.p_partkey", "referenced": "neo4j:Part.p_partkey",
+             "models": "graph -> graph", "expected_coverage": 1.0,
+             "note": "TPC-H partsupp.ps_partkey -> part.p_partkey, as an edge endpoint"},
+            {"dependent": "neo4j:-[SUPPLIES]->.source.s_suppkey", "referenced": "neo4j:Supplier.s_suppkey",
+             "models": "graph -> graph", "expected_coverage": 1.0,
+             "note": "TPC-H partsupp.ps_suppkey -> supplier.s_suppkey, as an edge endpoint"},
         ],
     }
     (OUT_DIR / "ground_truth.json").write_text(json.dumps(ground_truth, indent=2))

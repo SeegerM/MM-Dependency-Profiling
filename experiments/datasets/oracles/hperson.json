@@ -1,0 +1,47 @@
+{
+ "source": "Helsinki UDBMS Person dataset: Wikipedia page dump and RDF-style triple dump",
+ "name": "hperson",
+ "note": "No correspondence between the two dumps is declared by the publisher; every entry here is reconstructed. hperson.pages.title reaches the graph only under a comparison relation treating space and underscore alike, at 0.999974; under equality it is 0.008907.",
+ "dependencies": [
+  {
+   "dependent": "hperson.pages.normalized_from",
+   "referenced": "neo4j:HPerson.id",
+   "models": "document -> graph",
+   "cross_model": true,
+   "provenance": "reconstructed",
+   "arity": 1,
+   "evidence": "the API's normalised spelling is the graph's own, so equality suffices",
+   "degree": 0.999967
+  },
+  {
+   "dependent": "hperson.pages.title",
+   "referenced": "neo4j:HPerson.id",
+   "models": "document -> graph",
+   "cross_model": true,
+   "provenance": "reconstructed",
+   "arity": 1,
+   "evidence": "the same entity spelled with spaces; reachable only under a comparison relation that treats space and underscore alike",
+   "degree": 0.008907
+  },
+  {
+   "dependent": "neo4j:-[MENTIONS]->.source.id",
+   "referenced": "neo4j:HPerson.id",
+   "models": "graph -> graph",
+   "cross_model": false,
+   "provenance": "reconstructed",
+   "arity": 1,
+   "evidence": "an edge starts at a subject node",
+   "degree": 1.0
+  },
+  {
+   "dependent": "neo4j:-[MENTIONS]->.target.id",
+   "referenced": "neo4j:HPerson.id",
+   "models": "graph -> graph",
+   "cross_model": false,
+   "provenance": "reconstructed",
+   "arity": 1,
+   "evidence": "an edge ends at a resource node; literal objects were set aside at build time",
+   "degree": 1.0
+  }
+ ]
+}
