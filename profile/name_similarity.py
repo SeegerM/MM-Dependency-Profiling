@@ -1,25 +1,15 @@
 """Classifies each discovered cross-store link by how its two extractor names differ.
 
-This is the schema-level post-processing the Heterogeneity Profile's Syntactic and Semantic columns
-report. A discovered IND says two extractors observe overlapping values; it does not say whether
-they are called the same thing, spelled differently, or named with different words for the same
-concept. That distinction is schema-level heterogeneity (quadrants A.13 and A.23), and it is
-recoverable from the names alone once the link itself is known.
+Four classes, tested in order, so that a spelling variant is not reported as a synonym:
 
-Four classes, tested in order, so that the cheapest explanation wins:
+  identical         the normalised names agree
+  string-variant    a typo, prefix convention, tokenisation difference, or containment
+  lexical-semantic  related concepts by Wu-Palmer similarity over WordNet (max across senses)
+  unrelated         none of the above
 
-  identical   the normalised names agree
-  syntactic   the names are string variants of each other -- a typo, a prefix convention, a
-              tokenisation difference, or one name contained in the other
-  semantic    the names are different words for related concepts, by Wu-Palmer similarity over
-              WordNet with the maximum taken across senses
-  unrelated   none of the above
+"string-variant" rather than "syntactic", which refers to edit distance between values.
 
-Ordering matters. A pair that is both string-similar and lexically related is a spelling variant,
-not a synonym: reporting `vendor` and `vendors` as a semantic finding would overstate what the
-measure established.
-
-usage: name_similarity.py <exportDir> <indResultDir> [--syntactic=0.7] [--semantic=0.7]
+usage: name_similarity.py <exportDir> <indResultDir> [--string=0.7] [--lexical=0.7]
 """
 import json
 import re
@@ -27,7 +17,9 @@ import sys
 from pathlib import Path
 
 POSITIONAL = [a for a in sys.argv[1:] if not a.startswith("--")]
-EXPORT, RESULTS = Path(POSITIONAL[0]), Path(POSITIONAL[1])
+# Optional, so the module can also be imported as a library.
+EXPORT = Path(POSITIONAL[0]) if POSITIONAL else None
+RESULTS = Path(POSITIONAL[1]) if len(POSITIONAL) > 1 else None
 
 
 def flag(name, default):
@@ -35,13 +27,12 @@ def flag(name, default):
                        if a.startswith(f"--{name}=")), default))
 
 
-SYNTACTIC = flag("syntactic", 0.7)
-SEMANTIC = flag("semantic", 0.7)
+STRING_VARIANT = flag("string", 0.7)
+LEXICAL = flag("lexical", 0.7)
 TRAILING_COMMA = re.compile(r",\s*([}\]])")
 CAMEL = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
 
-# Tokens that carry no concept and would otherwise inflate every comparison: every identifier in
-# every schema contains one of them.
+# Common identifier tokens that carry no concept.
 STOPWORDS = {"id", "key", "no", "num", "code", "ref", "fk", "pk", ""}
 
 
@@ -115,10 +106,7 @@ class WordNet:
         if key in self.cache:
             return self.cache[key]
         best = 0.0
-        # The maximum across senses is the usual reading of word-level similarity, and it is also
-        # this measure's weak point: unrelated senses of a polysemous word can sit close together
-        # in the taxonomy, so a high score does not by itself establish that the two names mean
-        # related things in the schema at hand.
+        # Maximum across senses; unrelated senses of a polysemous word can score high.
         for left in self.wordnet.synsets(key[0], pos="n"):
             for right in self.wordnet.synsets(key[1], pos="n"):
                 score = left.wup_similarity(right) or 0.0
@@ -158,9 +146,9 @@ def main():
     stores = {e["relation"]: e["store"] for e in catalog if "store" in e}
     wordnet = WordNet()
     if wordnet.wordnet is None:
-        print("WordNet is unavailable; the semantic class cannot be evaluated.")
+        print("WordNet is unavailable; the lexical-semantic class cannot be evaluated.")
 
-    buckets = {"identical": [], "syntactic": [], "semantic": [], "unrelated": []}
+    buckets = {"identical": [], "string-variant": [], "lexical-semantic": [], "unrelated": []}
     for dependent_set, dependent, referenced_set, referenced in sorted(links()):
         if store_of(dependent_set, stores) == store_of(referenced_set, stores):
             continue
@@ -171,21 +159,21 @@ def main():
                  syntactic, semantic)
         if left == right:
             buckets["identical"].append(entry)
-        elif syntactic >= SYNTACTIC:
-            buckets["syntactic"].append(entry)
-        elif semantic >= SEMANTIC:
-            buckets["semantic"].append(entry)
+        elif syntactic >= STRING_VARIANT:
+            buckets["string-variant"].append(entry)
+        elif semantic >= LEXICAL:
+            buckets["lexical-semantic"].append(entry)
         else:
             buckets["unrelated"].append(entry)
 
     total = sum(len(v) for v in buckets.values())
     print(f"{EXPORT.parent.name}: {total} cross-store links "
-          f"(syntactic >= {SYNTACTIC}, semantic >= {SEMANTIC})\n")
+          f"(string-variant >= {STRING_VARIANT}, lexical-semantic >= {LEXICAL})\n")
     for name, items in buckets.items():
         share = len(items) / total if total else 0
-        print(f"  {name:<12} {len(items):>6}  {share:>5.0%}")
+        print(f"  {name:<17} {len(items):>6}  {share:>5.0%}")
 
-    for name in ("semantic", "syntactic"):
+    for name in ("lexical-semantic", "string-variant"):
         items = buckets[name]
         if not items:
             continue

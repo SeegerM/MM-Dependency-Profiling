@@ -1,26 +1,15 @@
 """Generates the Heterogeneity Profile (Tab. 1) from discovery results.
 
-The profile is not a new algorithm. It is an assembly: everything in it is read off the IND, UCC
-and FD results plus the extractor catalog, which is the paper's claim that dependency discovery is
-the instrument for measuring heterogeneity rather than merely a consumer of clean data.
+Everything is read off the IND, UCC and FD results plus the extractor catalog. Components:
 
-Five components, each with the source it is derived from.
+  schema-level      cross-store links, and how many join differently named extractors
+  data-level        links whose coverage falls short of 1
+  syntactic         links that equality misses and edit-distance matching finds
+  structural        UCCs and FDs per store, and whether a store nests
+  join candidates   links whose referenced side is a key
 
-  schema-level      which extractors across two stores are linked at all, and whether the linked
-                    ones agree on a name. A link between differently named extractors is precisely
-                    schema-level variation: the same information under two vocabularies.
-  data-level        how far the coverage of those links falls short of 1. A link at rho = 0.88 is
-                    a real reference that does not always hold.
-  syntactic         links that equality misses and edit-distance matching finds.
-  structural        UCCs and FDs per extractor, and whether a store nests. Two stores holding the
-                    same information at different degrees of normalization show it here.
-  join candidates   links whose referenced side is a key -- the foreign-key condition, and the
-                    precondition for an inter-model FD over a join-induced scope.
-
-Coverage is computed under *set* semantics, over supp(L) rather than weighted by multiplicity.
-docs/findings.md shows the bag reading changes with the scope a nested store is read at while the
-set reading does not, so a profile built on bag coverage would describe the tabularization as much
-as the data.
+Coverage uses set semantics (over supp(L), not weighted by multiplicity), because bag coverage
+changes with the scope at which a nested store is read.
 
 usage: build_profile.py <exportDir> <indResultDir> [--ucc=<uccLog>] [--fd=<fdLog>]
                         [--similarity=<simResultDir>] [--json=<out>]
@@ -41,9 +30,7 @@ def flag(name, default=None):
     return next((a.split("=", 1)[1] for a in sys.argv[1:] if a.startswith(f"--{name}=")), default)
 
 
-# A converted corpus declares each observation set's store in the catalog, which is more reliable
-# than inferring it from a name prefix. The prefix rule stays as a fallback for the exports written
-# before the field existed.
+# Store per observation set, from the catalog; store_of() falls back to a name-prefix rule.
 STORES = {}
 
 
@@ -136,10 +123,8 @@ def read_counts(path):
 def set_coverage(sets, link):
     """Coverage of one link, or None when the dependent observation is empty.
 
-    An empty observation is contained in every other, so the inclusion is a tautology rather than a
-    dependency at coverage zero. Scoring it zero is worse than useless: on a real schema, where
-    unused nullable columns are common, it makes the data-level component report most of the
-    instance as barely holding when nothing about the data is being measured at all.
+    An empty observation is contained in every other, so the inclusion is vacuous rather than a
+    dependency at coverage zero.
     """
     dep_relation, dep_column, ref_relation, ref_column = link
     dependent = sets[dep_relation]["values"].get(dep_column, set())
@@ -168,17 +153,13 @@ def main():
         entry["extractors"] += len(data["columns"])
         entry["rows"] += data["rows"]
         entry["nested"] |= "@" in relation
-        # Keyed by the catalog's file name, not by a prefix of the relation: neo4j_Tag.csv is a
-        # prefix of neo4j_Tag@vendors.csv, so prefix matching credits the array scope's results to
-        # the base scope as well.
+        # Keyed by exact file name: neo4j_Tag.csv is a prefix of neo4j_Tag@vendors.csv.
         entry["uccs"] += ucc_counts.get(data["file"], 0)
         entry["fds"] += fd_counts.get(data["file"], 0)
 
     print("Heterogeneity Profile")
     print(f"  export {export}")
-    # The IND run belongs in the provenance, not in a footnote: the data-level component is
-    # structurally incapable of showing variation when that run was exact, because every
-    # discovered link then holds at coverage 1 by construction.
+    # An exact IND run cannot show data-level variation (every link has coverage 1).
     print(f"  inclusions from {ind_dir}\n")
     print(f"  {'store':<12} {'scopes':>7} {'extractors':>11} {'rows':>10} {'nested':>7}"
           f" {'UCCs':>6} {'FDs':>6}")
@@ -244,10 +225,8 @@ def main():
     print(f"\n  schema-level      {renamed} of {total} cross-store links join differently named "
           f"extractors")
     print(f"  data-level        {partial} of {total} hold only partially under set semantics")
-    # This is an upper bound, not a count of variation. A similarity measure admits matches
-    # equality rejects whether or not the data actually varies, so on a clean instance the number
-    # is the measure's false-positive floor. It becomes evidence of syntactic variation only by
-    # comparison against that floor, which experiments/run/similarity_sweep.py calibrates.
+    # An upper bound: on a clean instance this count is the similarity measure's false-positive
+    # floor.
     print(f"  syntactic         {sim_only} links admitted by edit distance and not by equality "
           f"(upper bound; compare against the clean-instance floor)")
     print(f"  structural        {sum(1 for d in stores.values() if d['nested'])} of {len(stores)} "
