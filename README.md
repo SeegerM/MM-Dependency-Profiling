@@ -55,7 +55,7 @@ validity solve different problems. Only together do they recover everything:
 
 - **Union scope discovery:** recovered references rise from 3/9 to 9/9 on MMSBench-Net and from
   31/35 to 35/35 on LDBC SNB, without declared unions.
-- **Transformation-aware INDs:**
+- **Similarity-aware INDs:**
   - on real data, discovery infers MovieLens's `tt` registry prefix and Helsinki University's
     OPEID = 100 · OPEID6;
   - on TPC-H, it recovers 30 of 44 injected representation changes.
