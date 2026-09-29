@@ -13,3 +13,9 @@
 [submodule "upstream/unibench-ind"]
 	path = upstream/unibench-ind
 	url = https://github.com/dbishagen/unibench-ind-data-generator.git
+[submodule "upstream/ref-seeker-extractor"]
+	path = upstream/ref-seeker-extractor
+	url = https://github.com/dbishagen/ref-seeker-extractor.git
+[submodule "upstream/Polypheny-Simple-Client"]
+	path = upstream/Polypheny-Simple-Client
+	url = https://github.com/polypheny/Polypheny-Simple-Client.git
