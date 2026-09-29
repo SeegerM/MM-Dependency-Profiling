@@ -1,0 +1,159 @@
+{
+  "name": "imdb",
+  "source": "IMDB",
+  "comment": [
+    "IMDB's public dumps, converted to three models. The assignment is not arbitrary: titles carry",
+    "a delimited genre list and so belong in a store with list-valued properties; persons carry two",
+    "delimited lists and a natural child collection (their credits) and so belong in a document",
+    "store; ratings and alternative titles are flat and stay relational.",
+    "",
+    "The dependency of interest is knownForTitles: a comma-separated list of title identifiers,",
+    "i.e. a collection-valued foreign key occurring in real data rather than constructed for the",
+    "experiment. Under a single-relation adapter it is observed as one literal and is unreachable",
+    "at any threshold.",
+    "",
+    "Persons are kept only when every title they are known for is inside the anchor window ('all'),",
+    "which is what makes the instance referentially closed. Keeping persons with any such title",
+    "instead leaves the knownForTitles foreign key reading 0.64 -- partial because of sampling,",
+    "not because of the data, which is exactly the kind of artifact a converted corpus must avoid."
+  ],
+  "format": {
+    "delimiter": "\t",
+    "nulls": [
+      "\\N",
+      ""
+    ],
+    "header": true,
+    "suffix": ".csv"
+  },
+  "anchor": {
+    "table": "basics",
+    "key": "tconst",
+    "rows": 60000
+  },
+  "tables": {
+    "basics": {
+      "store": "graph",
+      "relation": "neo4j:Title",
+      "columns": [
+        "tconst",
+        "titleType",
+        "primaryTitle",
+        "startYear",
+        "runtimeMinutes",
+        "genres"
+      ],
+      "arrays": {
+        "genres": {
+          "split": ","
+        }
+      }
+    },
+    "rating": {
+      "store": "relational",
+      "relation": "pg.title_rating",
+      "columns": [
+        "tconst",
+        "averageRating",
+        "numVotes"
+      ],
+      "restrict_by": {
+        "column": "tconst"
+      }
+    },
+    "akas": {
+      "store": "relational",
+      "relation": "pg.title_akas",
+      "columns": [
+        "titleId",
+        "ordering",
+        "title",
+        "region",
+        "language"
+      ],
+      "restrict_by": {
+        "column": "titleId"
+      }
+    },
+    "name": {
+      "store": "document",
+      "relation": "mongo.person",
+      "columns": [
+        "nconst",
+        "primaryName",
+        "birthYear",
+        "deathYear",
+        "primaryProfession",
+        "knownForTitles"
+      ],
+      "restrict_by": {
+        "column": "knownForTitles",
+        "split": ",",
+        "mode": "all"
+      },
+      "arrays": {
+        "primaryProfession": {
+          "split": ","
+        },
+        "knownForTitles": {
+          "split": ","
+        }
+      },
+      "nest": [
+        {
+          "table": "principals",
+          "field": "credits",
+          "parent_key": "nconst",
+          "child_key": "nconst"
+        }
+      ]
+    },
+    "principals": {
+      "store": "document",
+      "relation": "mongo.principals",
+      "columns": [
+        "tconst",
+        "nconst",
+        "category",
+        "job"
+      ],
+      "restrict_by": {
+        "column": "tconst"
+      },
+      "skip_own_scope": true
+    }
+  },
+  "dependencies": [
+    {
+      "dependent": "pg.title_rating.tconst",
+      "referenced": "neo4j:Title.tconst",
+      "models": "relational -> graph",
+      "cross_model": true
+    },
+    {
+      "dependent": "pg.title_akas.titleId",
+      "referenced": "neo4j:Title.tconst",
+      "models": "relational -> graph",
+      "cross_model": true
+    },
+    {
+      "dependent": "mongo.person@knownForTitles.knownForTitles",
+      "referenced": "neo4j:Title.tconst",
+      "models": "document array -> graph",
+      "cross_model": true,
+      "note": "collection-valued foreign key occurring in the source data"
+    },
+    {
+      "dependent": "mongo.person@credits.credits.tconst",
+      "referenced": "neo4j:Title.tconst",
+      "models": "document array -> graph",
+      "cross_model": true
+    },
+    {
+      "dependent": "mongo.person@credits.credits.nconst",
+      "referenced": "mongo.person.nconst",
+      "models": "document array -> document",
+      "cross_model": false
+    }
+  ]
+}

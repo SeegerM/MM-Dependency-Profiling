@@ -1,0 +1,15 @@
+[submodule "upstream/spind"]
+	path = upstream/spind
+	url = https://github.com/SeegerM/spind.git
+	branch = multimodel
+[submodule "upstream/HyFD"]
+	path = upstream/HyFD
+	url = https://github.com/SeegerM/HyFD.git
+	branch = partial
+[submodule "upstream/HyUCC"]
+	path = upstream/HyUCC
+	url = https://github.com/SeegerM/HyUCC.git
+	branch = partial
+[submodule "upstream/unibench-ind"]
+	path = upstream/unibench-ind
+	url = https://github.com/dbishagen/unibench-ind-data-generator.git

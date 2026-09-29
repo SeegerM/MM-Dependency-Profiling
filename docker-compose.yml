@@ -1,0 +1,32 @@
+# The three stores the TPC-H, UniBench-style and converted corpora are loaded into.
+# They start empty; experiments/datasets/load_*.sh create and fill everything they read.
+# The credentials are local test defaults, matched by config/connections.properties.example.
+services:
+  postgres:
+    image: postgres:17
+    container_name: spind-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: mixed
+      POSTGRES_USER: spind
+      POSTGRES_PASSWORD: spindpass
+
+  mongo:
+    image: mongo:8
+    container_name: spind-mongo
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: spind
+      MONGO_INITDB_ROOT_PASSWORD: spindpass
+      MONGO_INITDB_DATABASE: shop
+
+  neo4j:
+    image: neo4j:2026.03.1
+    container_name: spind-neo4j
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      NEO4J_AUTH: neo4j/testpassword

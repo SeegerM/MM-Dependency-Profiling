@@ -1,0 +1,13 @@
+# Python 3.10 or newer. Almost every script uses only the standard library.
+#   python -m pip install -r requirements.txt
+#   python -m nltk.downloader wordnet
+
+# profile/name_similarity.py: WordNet schema-name similarity for "renamed link" findings.
+# Without the WordNet corpus it falls back to lexical similarity only.
+nltk>=3.9
+
+# upstream/musicbrainz-listenbrainz-wikidata/extract_sample.py: reads the .tar.zst ListenBrainz dumps.
+zstandard>=0.22
+
+# experiments/report/plot_repaired_scalability.py only (not needed for the paper's tables).
+matplotlib>=3.8

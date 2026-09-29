@@ -1,0 +1,12 @@
+# Connections to the local docker-compose stack (docker-compose.yml).
+# Copy to config/connections.properties (gitignored). The passwords are the stack's local test
+# defaults; change both files together if you expose the containers beyond localhost.
+postgres.pg.url=jdbc:postgresql://localhost:5432/mixed
+postgres.pg.user=spind
+postgres.pg.password=spindpass
+
+mongo.mongo.uri=mongodb://spind:spindpass@localhost:27017/?authSource=admin
+
+neo4j.graph.uri=bolt://localhost:7687
+neo4j.graph.user=neo4j
+neo4j.graph.password=testpassword

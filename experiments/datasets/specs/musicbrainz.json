@@ -1,0 +1,88 @@
+{
+  "name": "musicbrainz",
+  "source": "Musicbrainz",
+  "comment": [
+    "MusicBrainz is distributed as headerless PostgreSQL dumps. Column names below are the",
+    "documented schema and were checked against the field count of each table before being used;",
+    "the corpus's own foreign-key metadata (musicBrainzMock/Metadata/ForeignKeys.csv, 407 keys)",
+    "refers to the same columns positionally.",
+    "",
+    "The model assignment follows the shape of the data rather than convenience. An artist credit",
+    "is a list of contributing artists with join phrases -- a document with an embedded array, and",
+    "the only reason it is three relational tables upstream is that relational schemas cannot hold",
+    "an ordered list. Release groups sit in the graph store because they are the entity the",
+    "relationship tables radiate from. Artists and areas are flat and stay relational.",
+    "",
+    "Closure runs through three hops: the chosen credits name artists, and those artists sit in",
+    "areas. Each hop is a derived key set, which is what a real schema needs and what a single",
+    "anchor cannot express."
+  ],
+  "format": {"delimiter": "\t", "nulls": ["\\N"], "header": false, "suffix": ""},
+  "anchor": {"table": "artist_credit", "key": "id", "rows": 150000},
+  "key_sets": [
+    {"name": "artists", "table": "artist_credit_name", "column": "artist",
+     "restrict_by": {"column": "artist_credit", "set": "anchor"}},
+    {"name": "areas", "table": "artist", "column": "area",
+     "restrict_by": {"column": "id", "set": "artists"}}
+  ],
+  "tables": {
+    "artist_credit": {
+      "store": "document",
+      "relation": "mongo.artist_credit",
+      "scope": "document",
+      "source_columns": ["id", "name", "artist_count", "ref_count", "created", "edits_pending",
+                         "gid"],
+      "columns": ["id", "name", "artist_count", "gid"],
+      "nest": [
+        {"table": "artist_credit_name", "field": "artists",
+         "parent_key": "id", "child_key": "artist_credit"}
+      ]
+    },
+    "artist_credit_name": {
+      "store": "document",
+      "relation": "mongo.artist_credit_name",
+      "source_columns": ["artist_credit", "position", "artist", "name", "join_phrase"],
+      "columns": ["artist_credit", "position", "artist", "name"],
+      "restrict_by": {"column": "artist_credit", "set": "anchor"},
+      "skip_own_scope": true
+    },
+    "artist": {
+      "store": "relational",
+      "relation": "pg.artist",
+      "source_columns": ["id", "gid", "name", "sort_name", "begin_date_year", "begin_date_month",
+                         "begin_date_day", "end_date_year", "end_date_month", "end_date_day",
+                         "type", "area", "gender", "comment", "edits_pending", "last_updated",
+                         "ended", "begin_area", "end_area"],
+      "columns": ["id", "gid", "name", "sort_name", "type", "area", "gender"],
+      "restrict_by": {"column": "id", "set": "artists"}
+    },
+    "area": {
+      "store": "relational",
+      "relation": "pg.area",
+      "source_columns": ["id", "gid", "name", "type", "edits_pending", "last_updated",
+                         "begin_date_year", "begin_date_month", "begin_date_day",
+                         "end_date_year", "end_date_month", "end_date_day", "ended", "comment"],
+      "columns": ["id", "gid", "name", "type"],
+      "restrict_by": {"column": "id", "set": "areas"}
+    },
+    "release_group": {
+      "store": "graph",
+      "relation": "neo4j:ReleaseGroup",
+      "source_columns": ["id", "gid", "name", "artist_credit", "type", "comment",
+                         "edits_pending", "last_updated"],
+      "columns": ["id", "gid", "name", "artist_credit", "type"],
+      "restrict_by": {"column": "artist_credit", "set": "anchor"}
+    }
+  },
+  "dependencies": [
+    {"dependent": "neo4j:ReleaseGroup.artist_credit", "referenced": "mongo.artist_credit.id",
+     "models": "graph -> document", "cross_model": true},
+    {"dependent": "mongo.artist_credit@artists.artists.artist", "referenced": "pg.artist.id",
+     "models": "document array -> relational", "cross_model": true},
+    {"dependent": "mongo.artist_credit@artists.artists.artist_credit",
+     "referenced": "mongo.artist_credit.id",
+     "models": "document array -> document", "cross_model": false},
+    {"dependent": "pg.artist.area", "referenced": "pg.area.id",
+     "models": "relational -> relational", "cross_model": false}
+  ]
+}
