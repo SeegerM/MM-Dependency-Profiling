@@ -51,6 +51,18 @@ public class ExportUniBench {
         }
         catalog.append("]\n");
         Files.writeString(outDir.resolve("catalog.json"), catalog.toString());
+
+        // Native types go beside the catalog, not into it: the discovery entry points parse the
+        // catalog with a regex.
+        StringBuilder types = new StringBuilder("{\n");
+        for (int i = 0; i < all.size(); i++) {
+            MetaLevelExporter.Scope scope = all.get(i);
+            types.append("  \"").append(scope.relation()).append("\": ")
+                    .append(scope.types().toJson())
+                    .append(i + 1 < all.size() ? ",\n" : "\n");
+        }
+        types.append("}\n");
+        Files.writeString(outDir.resolve("types.json"), types.toString());
         System.out.println("\n" + all.size() + " observation sets -> " + outDir);
     }
 }

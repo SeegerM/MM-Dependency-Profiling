@@ -16,14 +16,8 @@ import java.util.List;
 /**
  * Presents any SPIND {@link TableSource} to Metanome algorithms as a {@code RelationalInput}.
  *
- * <p>SPIND already turns relational tables, document collections and graph labels into rows of
- * strings — that is what its adapters are. Metanome's input interface asks for exactly the same
- * thing behind five methods. So the model-specific work does not need repeating: bridging the two
- * interfaces gives HyFD, HyUCC and any other Metanome algorithm the same three data models SPIND
- * reads, with no change to the algorithms themselves.</p>
- *
- * <p>This is the concrete form of the paper's claim that extraction is the only model-specific
- * component. Two independently written discovery algorithms consume one extractor implementation.</p>
+ * <p>SPIND's adapters already produce rows of strings, which is what Metanome's input interface
+ * expects, so HyFD, HyUCC and other Metanome algorithms can read the same sources unchanged.</p>
  */
 public final class MetanomeBridge implements RelationalInputGenerator {
 
@@ -43,10 +37,11 @@ public final class MetanomeBridge implements RelationalInputGenerator {
      */
     @Override
     public RelationalInput generateNewCopy() throws InputGenerationException {
-        // Document and graph stores are not streamed directly any more. Their adapters tabularize a
-        // collection into one relation, which serializes list-valued fields and explodes only the
-        // first array -- measured to cost 24 percentage points of recall and to halve precision.
-        // They must go through the meta-level export, which emits one observation set per scope.
+        if (source instanceof TableSource.File file && file.path().toString().endsWith(".mscope")) {
+            throw new InputGenerationException("Masked scopes require CompleteMatchDiscovery; legacy null semantics are incompatible");
+        }
+        // Document and graph stores must go through the meta-level export (one observation set per
+        // scope); streaming them directly would serialize list-valued fields.
         if (source instanceof TableSource.Mongo || source instanceof TableSource.Neo4jLabel) {
             throw new InputGenerationException(
                     "Streaming " + source.displayName() + " directly is retired: a collection-valued "
@@ -93,9 +88,7 @@ public final class MetanomeBridge implements RelationalInputGenerator {
             String[] values = new String[columnNames.size()];
             for (int i = 0; i < values.length; i++) {
                 String value = i < row.length ? row[i] : null;
-                // SPIND's adapters emit the configured null string; Metanome's convention is a Java
-                // null, which is what HyFD's value comparator tests against. Translate rather than
-                // let "" become an ordinary value that every missing field agrees on.
+                // SPIND emits the configured null string; Metanome expects a Java null.
                 values[i] = (value == null || value.equals(nullString)) ? null : value;
             }
             return Arrays.asList(values);

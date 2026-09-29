@@ -1,61 +1,41 @@
-# ucc — partial UCC discovery (HyUCC)
+# ucc — partial UCC discovery (HyUCC-Partial)
 
-HyUCC is the `upstream/HyUCC` submodule, branch `partial`, version `1.2-Partial`.
+HyUCC-Partial is the `upstream/HyUCC` submodule (branch `partial`, version `1.2-Partial`), a
+Metanome `RelaxedUniqueColumnCombinationAlgorithm`. It uses the same relaxation model as
+HyFD-Partial (`maxViolations = numRecords - numRecords * threshold`, parameter `THRESHOLD`) and as
+SPIND (`(1 - ρ)·|L|`), so INDs, FDs and UCCs relax on one axis. Each result carries its degree.
+HyUCC is used as a library through `core/adapters/MetanomeBridge` and is not modified here.
 
-## Does it have the same partial implementation as HyFD? Yes
+| file | purpose |
+|---|---|
+| `src/HyUccMultiModel.java` | runs HyUCC-Partial on one source (compiled into `fd/build`) |
+| `run-multimodel.sh` | `HyUccMultiModel` with the shared classpath |
+| `run-metalevel.sh` | `HyUccMultiModel` over every observation set of a meta-level export |
 
-| | HyFD | HyUCC |
-|---|---|---|
-| interface | `RelaxedFunctionalDependencyAlgorithm` | `RelaxedUniqueColumnCombinationAlgorithm` |
-| version | `1.2-Partial` | `1.2-Partial` |
-| threshold identifier | `THRESHOLD` | `THRESHOLD` |
-| violation budget | `numRecords - numRecords * threshold` | `numRecords - numRecords * threshold` |
-| result type | `RelaxedFunctionalDependency` | `RelaxedUniqueColumnCombination` |
-| degree on each result | yes | yes |
-| `WRITE_VIOLATIONS` | yes | yes |
+## Usage
 
-Identical relaxation model, and identical to SPIND's `(1 - ρ)·|L|`. All three dependency types
-therefore relax on one axis, which is the symmetry the paper's conclusion asks for.
+Build first (`./run.sh build-upstream`, then `./run.sh build` or `source core/adapters/build.sh`).
 
-## Multi-model capability — yes, same bridge
-
-Runs against all three stores through `core/adapters/MetanomeBridge`, unmodified.
-
-```
+```bash
+# one source: postgres <schema> <table> | file <path.csv> -
 ./ucc/run-multimodel.sh postgres public customer 1.0
-./ucc/run-multimodel.sh mongo    shop   orders   1.0
-./ucc/run-multimodel.sh neo4j    neo4j  Part     1.0
-./ucc/run-multimodel.sh file     <path.csv> -    1.0
+./ucc/run-multimodel.sh file "$WORK_ROOT/mm_tpch/metalevel/<set>.csv" - 1.0 out.uccs
+
+# every observation set of an export (default: $WORK_ROOT/unibench/metalevel)
+./ucc/run-metalevel.sh 1.0 "$WORK_ROOT/mm_tpch/metalevel"
 ```
 
-| store | source | extractors | UCCs | arities | any unary key |
-|---|---|---|---|---|---|
-| PostgreSQL | `public.customer` | 8 | 7 | 1:4, 2:3 | yes |
-| Neo4j | `Supplier` | 6 | 4 | 1:4 | yes |
-| Neo4j | `Part` | 8 | 4 | 1:2, 5:2 | yes |
-| MongoDB | `shop.orders` | 17 | 69 | 2:2, 3:29, 4:20, 5:11, 6:5, 7:2 | **no** |
+`HyUccMultiModel <postgres|mongo|neo4j|file> <a> <b> [threshold] [dumpFile]` prints the number of
+extractors and UCCs, the UCC count per arity, whether any unary key exists, and the minimal-arity
+UCCs. With `dumpFile` the full result is written one UCC per line. Document and graph stores are
+read from their meta-level export (`file`), not directly; `.mscope` inputs are delegated to
+`fd/src/CompleteMatchDiscovery.java`.
 
-## The document store finds no key at all
+## Note on scopes
 
-This was predicted from `docs/findings.md` and is now measured. Over the tabularized view of
-`shop.orders`, HyUCC reports **69 UCCs and not one of them unary**: the collection's own primary
-key `o_orderkey` appears only in combination with line-item attributes.
-
-Exporting the same documents at document scope — one row per order, array dropped — and running the
-same algorithm:
-
-```
-array-item scope :  69 UCCs, minimum arity 2, o_orderkey is not a key
-document scope   :  10 UCCs, [o_orderkey] is the unary key
-```
-
-Same data, same algorithm, opposite answers about the primary key. Exploding an embedded array
-multiplies every parent row, which destroys the uniqueness of every parent-level key.
-
-Two consequences:
-
-- Relational UCC discovery **cannot** be reused on a tabularized document store. The extractor's
-  scope has to travel with the data, or keys are silently lost.
-- This propagates into inter-model FDs. A UCC on the referenced side is what makes a join-induced
-  scope functional (`docs/composite-scope.md`); if the UCC is missed, the join is not recognised as
-  functional and the inter-model FD is never proposed.
+UCCs must be discovered per scope. If an embedded array is exploded into its parent's rows, every
+parent row is repeated and parent-level keys are lost: over a tabularized document collection the
+collection's own primary key is no longer unary. The meta-level export keeps the document scope
+and each array scope separate, so the document key is found at document scope. Since join-induced
+scopes for inter-model FDs require a UCC on the referenced side, a missed key also means a missed
+inter-model FD.

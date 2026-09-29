@@ -18,11 +18,15 @@ import java.util.List;
  * usage: HyUccMultiModel <postgres|mongo|neo4j|file> <a> <b> [threshold] [dumpFile]
  *
  * With a dump file the complete result set is written one UCC per line. The console
- * listing shows only the minimal-arity ones and is there to eyeball a run.
+ * listing shows only the minimal-arity ones.
  */
 public class HyUccMultiModel {
 
     public static void main(String[] args) throws Exception {
+        if ("file".equals(args[0]) && args[1].endsWith(".mscope")) {
+            CompleteMatchDiscovery.runWrapper(args, "uccs");
+            return;
+        }
         String model = args[0];
         double threshold = args.length > 3 ? Double.parseDouble(args[3]) : 1.0;
         String dumpFile = args.length > 4 ? args[4] : null;
@@ -39,7 +43,7 @@ public class HyUccMultiModel {
             case "postgres" -> new TableSource.Postgres("pg", args[1], args[2]);
             case "mongo" -> new TableSource.Mongo("mongo", args[1], args[2]);
             case "neo4j" -> new TableSource.Neo4jLabel("graph", args[1], args[2]);
-            // A CSV export, used to compare the same data observed under a different scope.
+            // An exported observation set. Document and graph stores are read this way.
             case "file" -> new TableSource.File(java.nio.file.Path.of(args[1]));
             default -> throw new IllegalArgumentException("unknown model: " + model);
         };
@@ -79,14 +83,13 @@ public class HyUccMultiModel {
         }
         System.out.println("by arity   : " + byArity);
         System.out.println("any unary  : " + unaryKey);
-        // Print the minimal ones: for a tabularized nested store, the smallest UCC says what the
-        // relation's real key became after the array was exploded.
         if (dumpFile != null) {
             java.nio.file.Files.write(java.nio.file.Path.of(dumpFile),
                     results.stream().map(Object::toString).toList());
             System.out.println("dumped     : " + dumpFile);
         }
 
+        // Print the minimal-arity UCCs.
         int minArity = byArity.isEmpty() ? 0 : byArity.keySet().iterator().next();
         for (Result r : results) {
             String text = r.toString();

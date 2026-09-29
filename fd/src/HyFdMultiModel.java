@@ -17,12 +17,16 @@ import java.util.List;
  * usage: HyFdMultiModel <postgres|mongo|neo4j|file> <a> <b> [threshold] [dumpFile]
  *   postgres public customer      mongo shop orders      neo4j neo4j Part
  *
- * With a dump file the complete result set is written one FD per line, which is what any
- * downstream classification needs; the console listing is capped and only there to eyeball a run.
+ * With a dump file the complete result set is written one FD per line; the console listing is
+ * capped at ten.
  */
 public class HyFdMultiModel {
 
     public static void main(String[] args) throws Exception {
+        if ("file".equals(args[0]) && args[1].endsWith(".mscope")) {
+            CompleteMatchDiscovery.runWrapper(args, "fds");
+            return;
+        }
         String model = args[0];
         double threshold = args.length > 3 ? Double.parseDouble(args[3]) : 1.0;
         String dumpFile = args.length > 4 ? args[4] : null;

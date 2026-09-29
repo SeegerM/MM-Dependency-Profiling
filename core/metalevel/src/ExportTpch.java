@@ -11,17 +11,14 @@ import java.util.List;
 /**
  * Exports the TPC-H-derived three-store instance to the meta level, one observation set per scope.
  *
- * The counterpart of this export is the flat relational baseline written by
- * {@code experiments/datasets/build_dataset.py}: identical values, identical attribute sets, laid
- * out as seven relations in one store. Running the same three algorithms over both is what
- * separates the effect of distributing data across models from the effect of the data itself.
+ * The flat relational counterpart, with identical values in seven relations, is written by
+ * {@code experiments/datasets/build_dataset.py}.
  *
  * usage: ExportTpch &lt;outDir&gt; [--with-parent-reference]
  *
  * The flag materializes the join-induced scope: each array element carries the identifier of the
- * document it belongs to. It is off during plain discovery, because a parent-valued column in a
- * child scope is not an extractor over that scope. It is on when the question is what the nested
- * layout loses relative to the normalized one.
+ * document it belongs to. It is off by default, because a parent-valued column in a child scope is
+ * not an extractor over that scope.
  */
 public class ExportTpch {
 
@@ -65,6 +62,18 @@ public class ExportTpch {
         }
         catalog.append("]\n");
         Files.writeString(outDir.resolve("catalog.json"), catalog.toString());
+
+        // Native types go beside the catalog, not into it: the discovery entry points parse the
+        // catalog with a regex.
+        StringBuilder types = new StringBuilder("{\n");
+        for (int i = 0; i < all.size(); i++) {
+            MetaLevelExporter.Scope scope = all.get(i);
+            types.append("  \"").append(scope.relation()).append("\": ")
+                    .append(scope.types().toJson())
+                    .append(i + 1 < all.size() ? ",\n" : "\n");
+        }
+        types.append("}\n");
+        Files.writeString(outDir.resolve("types.json"), types.toString());
         System.out.printf("%n%d observation sets, %d attributes -> %s%n",
                 all.size(), attributes, outDir);
     }

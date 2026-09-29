@@ -11,14 +11,8 @@ import java.util.regex.Pattern;
  * Runs SPIND's similarity path over a meta-level export.
  *
  * The only difference from {@link SpindMetaLevel} is the matching relation: a dependent value
- * counts as covered when a referenced value is within edit distance tau of it, rather than equal
- * to it. Everything else -- the observations, the partial threshold, the violation budget -- is
- * the same, which is the point: similarity is a property of the comparison, not of the pipeline.
- *
- * Reading the export rather than the stores matters more here than for equality. A vendor name
- * observed as the literal ["EA_Sports"] is not merely unequal to EA_Sports, it is far from it: the
- * brackets and quotes are four edits before any character of the name is considered. Similarity
- * over a serialized collection is not a weaker form of matching, it is meaningless.
+ * counts as covered when a referenced value is similar to it (by default, within edit distance
+ * tau) rather than equal to it.
  *
  * usage: SpindSimilarity &lt;exportDir&gt; &lt;threshold&gt; &lt;tau&gt; &lt;tempFolder&gt; &lt;resultFolder&gt;
  */
@@ -31,15 +25,23 @@ public class SpindSimilarity {
     public static void main(String[] args) throws Exception {
         Path exportDir = Path.of(args[0]);
         double threshold = Double.parseDouble(args[1]);
-        int tau = Integer.parseInt(args[2]);
+        // The third argument is the comparison relation: a number means edit distance at that
+        // radius; a name selects one of the other measures, for which tau is not used.
+        String relation = args[2];
+        int tau = relation.matches("-?\\d+") ? Integer.parseInt(relation) : 0;
 
         Config config = new Config(threshold);
-        config.similarityMode = Config.SimilarityMode.EDIT_DISTANCE;
+        config.similarityMode = switch (relation) {
+            case "prefix", "registry-prefix" -> Config.SimilarityMode.REGISTRY_PREFIX;
+            case "normalised", "separator-normalised" ->
+                    Config.SimilarityMode.SEPARATOR_NORMALISED;
+            case "jaccard" -> Config.SimilarityMode.JACCARD;
+            case "hybrid" -> Config.SimilarityMode.HYBRID;
+            default -> Config.SimilarityMode.EDIT_DISTANCE;
+        };
         config.editDistanceThreshold = tau;
-        // A column is excluded from the similarity path when *any* of its values is longer than
-        // this. On real text that is a trap: 0.4% of IMDB's titles exceed the default of 50
-        // characters, and that 0.4% removes the whole column, so the run reports nothing and looks
-        // like an absence of similar values rather than an absence of candidates.
+        // A column is excluded from the similarity path when any of its values is longer than
+        // this, so long-text columns may need a higher limit than the default.
         config.maxValueLength = Integer.getInteger("spind.maxValueLength", config.maxValueLength);
         config.maxNary = 1;
         config.databaseName = "metalevel-similarity";

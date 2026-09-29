@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # Runs HyFD-Partial over every observation set of a meta-level export.
-# Document and graph stores are only read this way; streaming them directly is retired.
 #   ./fd/run-metalevel.sh [threshold] [exportDir]
 set -uo pipefail
 cd "$(dirname "$0")/.."
@@ -10,8 +9,7 @@ THRESHOLD="${1:-1.0}"
 EXPORT="${2:-$WORK_ROOT/unibench/metalevel}"
 
 # The catalog lists the observation sets; file names alone are lossy, because a relation name is
-# sanitised on the way to disk. Carriage returns are stripped: python writes CRLF on Windows, and a
-# trailing one silently invalidates every path.
+# sanitised on the way to disk. Carriage returns are stripped because python writes CRLF on Windows.
 mapfile -t FILES < <(python experiments/lib/list_export.py "$EXPORT" | tr -d '\r')
 
 for file in "${FILES[@]}"; do

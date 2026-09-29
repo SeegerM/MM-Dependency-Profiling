@@ -8,8 +8,7 @@ import java.nio.file.Path;
 /**
  * Runs SPIND across the UniBench-IND three-store setup.
  *
- * The pinned SPIND commit carries the multi-model adapters but not the canonical result dump added
- * later, so results are read back from its JSON output by experiments/run/verify_unibench.py.
+ * Results are read back from SPIND's JSON output by experiments/run/verify_unibench.py.
  *
  * usage: SpindMultiModel <threshold> <tempFolder> <resultFolder>
  */
@@ -27,9 +26,8 @@ public class SpindMultiModel {
         Files.createDirectories(Path.of(config.tempFolder));
         Files.createDirectories(Path.of(config.resultFolder));
 
-        // Every entity the oracle refers to. The two "Vendor" entities of the dependency diagram
-        // are the relational table and the vendor sub-document nested inside an order item; the
-        // latter needs no separate source, since the document adapter exposes it as a path.
+        // Every entity the oracle refers to. The vendor sub-document nested in an order item needs
+        // no separate source; the document adapter exposes it as a path.
         config.addTable(new TableSource.Postgres("pg", "public", "customer"));
         config.addTable(new TableSource.Postgres("pg", "public", "invoice"));
         config.addTable(new TableSource.Postgres("pg", "public", "vendor"));

@@ -1,45 +1,45 @@
 # core — extraction and the meta level
 
-The model-specific part of the system, and the only part that is model-specific.
+The only model-specific part of the system. Everything downstream (IND, FD and UCC discovery, the
+profile) reads the output of this folder and does not know which data model a value came from.
 
-## adapters/
-One per data model. Turns a store into observations: a bag of value tuples per extractor.
-Currently these live in SPIND (`io/PostgresRelationalInput`, `io/MongoRelationalInput`,
-`io/Neo4jRelationalInput`); they move here so that FD discovery can use them too.
+| folder | contents |
+|---|---|
+| `adapters/` | `MetanomeBridge` (SPIND sources as Metanome input), `MaskedScope` (`.mscope` file format), shared build script |
+| `metalevel/` | `MetaLevelExporter` and the per-instance export entry points |
 
-Gaps, and where each stands:
-- **fixed** — array *container* paths were emitted although they are not leaf paths, and their
-  observations were empty, so they were vacuously included in everything;
-- **fixed** — only one array per document was exploded and any second was serialized; every array
-  path is now its own scope;
-- **fixed** — Neo4j list properties were stringified, so `["EA_Sports"]` could never be included in
-  a vendor name; every list property is now its own scope;
-- *open* — the document family is inferred from a 1,000-document sample in the streaming adapter,
-  so completeness is relative to a sampled family rather than to `𝓔(I)` as defined. The exporter
-  scans the whole collection, so this affects only the direct-streaming path;
-- *open* — values are compared as strings, so `42` and `"42"` are indistinguishable.
+## metalevel/
 
-## catalog/
-The admissible family `𝓔`, materialized: for each extractor, its id, store, scope, arity and
-comparison domain. This is the honest denominator for "how many candidates were considered", and
-the place where a scope is recorded so a reported coverage can be interpreted.
+`MetaLevelExporter` materializes each store as one observation set per scope. A list-valued graph
+property and every document array path define their own scope (`entity@path`), whose matches are
+the list elements, so an element is one observation rather than part of a serialized literal.
+Relationship types of a graph store are exported as scopes of their own.
 
-## metalevel/ — built
-`MetaLevelExporter` materializes each store as one observation set **per scope**, plus a catalog.
-A list-valued property and an array path each define a scope whose matches are its elements, so an
-element is an observation rather than part of a serialized literal. This is where the collection
-handling lives, and fixing it here means exact, partial and similarity discovery all inherit it.
+Entry points (all take the output directory; the store connections come from the properties file
+given with `-Dspind.connections`, see `config/connections.properties.example`):
 
-Measured against third-party ground truth (`docs/unibench.md`): **100% recall and 100% precision**,
-against 76% and 49% when the same stores are streamed directly. Three defects disappear together —
-list elements become reachable, the array-container column of nulls that was vacuously included in
-everything is no longer emitted, and the document scope regains its own primary key.
+| class | usage |
+|---|---|
+| `ExportTpch` | `ExportTpch <outDir> [--with-parent-reference]` |
+| `ExportUniBench` | `ExportUniBench <outDir>` |
+| `ExportSources` | `ExportSources <specFile> <outDir> [--with-parent-reference] [--flat]` |
+| `LoadComs`, `ExportComs` | `LoadComs [networkScale]`, `ExportComs <outDir>` (MMSBench-Net; need the optional Polypheny client) |
+| `RelationalConversionBaseline` | `RelationalConversionBaseline <specFile> <outDir>` (independent native-to-relational conversion) |
 
+`ExportSources` reads a spec file with one source per line (`postgres`, `mongo`, `neo4j-label`,
+`neo4j-rels`, `union`); the specs used in the paper are in `experiments/datasets/specs/*.sources`.
+`--with-parent-reference` adds the owning document's `_id` to each array scope; `--flat` drops the
+relationship scopes.
+
+Each export directory contains one CSV per observation set, `catalog.json` (relation, scope, rows,
+columns, file for each set) and `types.json` (native type histogram per column). With
+`-Dmm.definedness=true` the exporter writes `.mscope` files instead, which carry a definedness mask
+per row so that a missing value and an empty string stay distinct.
+
+```bash
+source core/adapters/build.sh      # compiles and exports $MM_CP
+java -cp "$MM_CP" -Dspind.connections="$MM_REPO/config/connections.properties" \
+     ExportTpch "$(mm_path "$WORK_ROOT/mm_tpch/metalevel")"
 ```
-./ind/run-metalevel.sh 0.5              # export, then discover over the export
-```
 
-## join/
-Materializes a join-induced scope (`docs/composite-scope.md`) from a discovered IND plus a UCC on
-the referenced side. Output is another meta-level observation set, so FD discovery over it needs no
-special case. This is what makes an inter-model FD expressible.
+Limitation: values are compared as serialized text, so `42` and `"42"` are the same value.

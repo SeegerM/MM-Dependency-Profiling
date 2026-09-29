@@ -16,8 +16,7 @@ import java.util.regex.Pattern;
  *
  * usage: SpindMetaLevel &lt;exportDir&gt; &lt;threshold&gt; &lt;tempFolder&gt; &lt;resultFolder&gt; [maxNary]
  *
- * maxNary defaults to 1. Higher values let SPIND climb the lattice, which is where IND discovery
- * becomes expensive and where the candidate counts the paper reasons about actually arise.
+ * maxNary defaults to 1; higher values let SPIND discover n-ary INDs.
  */
 public class SpindMetaLevel {
 
@@ -31,26 +30,42 @@ public class SpindMetaLevel {
 
         Config config = new Config(threshold);
         config.maxNary = args.length > 4 ? Integer.parseInt(args[4]) : 1;
-        // Restricting candidates to one comparison domain is a property of the run, not of the
-        // export, so it is a switch rather than an argument: the same catalog is discovered over
-        // both ways when the question is what typing costs and buys.
+        // Restricts candidates to one comparison domain.
         config.typedComparison = Boolean.getBoolean("spind.typedComparison");
         config.collectColumnStats = config.collectColumnStats || config.typedComparison;
-        // Domain pruning happens on the pre-prune path, so it has to be on for the switch
-        // to have any effect at all.
+        // Domain pruning happens on the pre-prune path, so it must be enabled too.
         config.usePrePrune = config.usePrePrune || config.typedComparison;
+        // Physical validation strategies; all must produce the same result set.
+        config.usePrePrune = config.usePrePrune || Boolean.getBoolean("spind.prePrune");
+        config.useFastValidation = Boolean.getBoolean("spind.fastValidation");
+        config.useInMemoryValidation = Boolean.getBoolean("spind.inMemory");
+        config.usePartitionedValidation = Boolean.getBoolean("spind.partitioned");
+        // The partitioned validator reads either SPIND's intermediate chunks or the exported
+        // observation sets again; both must give identical results.
+        config.usePartitionFromSource = Boolean.getBoolean("spind.partitionFromSource");
+        // Chunking must not affect the result. Long.MAX_VALUE disables it.
+        String chunkThreshold = System.getProperty("spind.chunkThresholdBytes");
+        if (chunkThreshold != null) {
+            config.chunkThresholdBytes = Long.parseLong(chunkThreshold);
+        }
+        config.collectColumnStats = config.collectColumnStats || config.usePrePrune;
         config.databaseName = "unibench-metalevel";
         config.tempFolder = args[2];
         config.resultFolder = args[3];
         config.nullString = "";
         config.inputFileHasHeader = true;
         config.separator = ',';
+        // MetaLevelExporter writes RFC 4180, where a backslash is data. OpenCSV's default backslash
+        // escape would read a quoted value ending in '\\' as escaping its closing quote.
+        config.fileEscape = '\0';
         Files.createDirectories(Path.of(config.tempFolder));
         Files.createDirectories(Path.of(config.resultFolder));
 
         Matcher matcher = ENTRY.matcher(Files.readString(exportDir.resolve("catalog.json")));
         int count = 0;
         while (matcher.find()) {
+            if (matcher.group(2).endsWith(".mscope"))
+                throw new IllegalArgumentException("Masked scopes require a definedness-aware consumer; SPIND CSV ingestion is not yet migrated");
             config.addTable(new TableSource.File(exportDir.resolve(matcher.group(2)), matcher.group(1)));
             count++;
         }

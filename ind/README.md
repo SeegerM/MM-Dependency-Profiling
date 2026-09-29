@@ -1,31 +1,44 @@
 # ind — partial IND discovery (SPIND)
 
-SPIND is the `upstream/spind` submodule (branch `multimodel`). This directory holds the glue:
-run configurations, result adapters, and anything needed to drive it over meta-level exports.
+SPIND is the `upstream/spind` submodule (branch `multimodel`). This folder holds the runners that
+drive it over meta-level exports and over the UniBench-IND stores.
 
-Relevant properties for this paper:
-- partial INDs via a violation budget `maxViolations = |L| * (1 - ρ)`;
-- three interchangeable physical strategies (sort-merge, in-memory inverted index, hash
-  partitioning) that produce bit-identical results — verified on the multi-model setup;
-- similarity INDs exist but are unary-only and disjoint from the partitioned path, which is why
-  Fig. 1's `⊆^{0.86}` claim has no experiment behind it yet (E8).
+SPIND discovers partial INDs with the violation budget `maxViolations = |L| * (1 - ρ)`, the same
+relaxation model HyFD-Partial and HyUCC-Partial use. The physical validation strategy (sort-merge,
+in-memory inverted index, hash partitioning) is chosen per run and does not change the result.
+Similarity INDs are unary only.
 
-## Integration status — verified 2026-08-22
-
-| check | result |
+| file | purpose |
 |---|---|
-| builds and installs | yes — `de.jakob-l-m:spind:1.0.0-SNAPSHOT` |
-| installed jar current | **only after a rebuild**; see below |
-| multi-model adapters in the artifact | Postgres, Mongo, Neo4j all present |
-| library API | `new Spind(config).execute()`; results written as JSON + canonical dumps |
-| automated tests | none — `SoccerSmokeTest` is a `main()`, and surefire cannot resolve its provider offline |
+| `src/SpindMetaLevel.java` | partial INDs over a meta-level export |
+| `src/SpindSimilarity.java` | similarity INDs over a meta-level export |
+| `src/SpindMultiModel.java` | partial INDs read directly from the UniBench-IND stores |
+| `run-metalevel.sh` | exports UniBench-IND (if not yet exported), then runs `SpindMetaLevel` |
+| `run-unibench.sh` | runs `SpindMultiModel` |
 
-**Blocker: the work is uncommitted.** All of it — the multi-model adapters, the three physical
-strategies, the benchmark harness — lives as 21 modified/untracked files on the unmerged worktree
-branch `claude/multi-model-inclusion-discovery-b5b942`. Before this repo can depend on SPIND:
+## Usage
 
-1. commit and merge that branch;
-2. `mvn install` from the merged source.
+Build first (`./run.sh build-upstream`, then `./run.sh build` or `source core/adapters/build.sh`).
 
-The `.m2` artifact was a year old (Feb 2025, 27 classes) and contained none of it. A rebuild during
-this check took it to 88 classes; anyone else building today would silently get the stale one.
+```bash
+java -Xmx8g -cp "$MM_CP" SpindMetaLevel <exportDir> <threshold> <tempFolder> <resultFolder> [maxNary]
+java -Xmx8g -cp "$MM_CP" SpindSimilarity <exportDir> <threshold> <tau|prefix|normalised|jaccard|hybrid> \
+     <tempFolder> <resultFolder>
+
+./ind/run-metalevel.sh [threshold] [--reexport]   # UniBench-IND: $WORK_ROOT/unibench/meta-results-<threshold>
+./ind/run-unibench.sh  [threshold]                # UniBench-IND: $WORK_ROOT/unibench/results-<threshold>
+```
+
+`SpindMetaLevel` reads the observation sets listed in `<exportDir>/catalog.json`; `maxNary` defaults
+to 1 (unary INDs). Optional system properties select the strategy and domain handling:
+`-Dspind.typedComparison`, `-Dspind.prePrune`, `-Dspind.fastValidation`, `-Dspind.inMemory`,
+`-Dspind.partitioned`, `-Dspind.partitionFromSource`, `-Dspind.chunkThresholdBytes=<n>`.
+
+`SpindSimilarity` takes either an edit-distance radius `tau` or the name of a comparison relation.
+Columns with any value longer than `-Dspind.maxValueLength` are excluded from the similarity path;
+raise it for long text columns.
+
+The UniBench runners need the UniBench-IND stores running (see `REPRODUCE.md`) and read the
+connections from `config/connections.unibench.properties`.
+
+`.mscope` exports are not supported by SPIND; export plain CSV observation sets for IND discovery.

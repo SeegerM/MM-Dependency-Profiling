@@ -1,61 +1,45 @@
 # fd — partial FD discovery (HyFD-Partial)
 
-HyFD is the `upstream/HyFD` submodule (branch `partial`), version `1.2-Partial`: a Metanome
-`RelaxedFunctionalDependencyAlgorithm` with `maxViolations = numRecords * (1 - threshold)` — the
-same partiality model SPIND uses. Partial INDs and partial FDs therefore relax on one axis, which
-is the symmetry the paper's conclusion asks for.
+HyFD-Partial is the `upstream/HyFD` submodule (branch `partial`, version `1.2-Partial`), a Metanome
+`RelaxedFunctionalDependencyAlgorithm` with the violation budget
+`maxViolations = numRecords * (1 - threshold)`, the same partiality model SPIND and HyUCC-Partial
+use. It is used as a library through `core/adapters/MetanomeBridge`; HyFD itself is not modified
+here.
 
-Integration is deliberately thin: HyFD takes a Metanome `DefaultFileInputGenerator` over CSV, and
-meta-level exports are CSV. No modification to HyFD is required.
-
-Open: HyUCC is a separate repo (`HYUCC_HOME`) and is verified working — see `ucc/README.md`.
-iff its PLI has no clusters), which suffices for the foreign-key condition in E3 and the join
-validity check in E4. N-ary UCCs would need HyUCC [PN17].
-
-Note from `docs/findings.md`: UCC discovery over a *tabularized* document store misses parent-level
-keys, so the export fed to UCC discovery has to carry its scope.
-
-## Integration status — verified 2026-08-22
-
-Runs as a library over a meta-level CSV; no modification to HyFD required.
-
-```
-$ ./fd/build.sh F:/temp/multimodel/mm_tpch/pg_customer.csv 1.0
-FDs       : 46  (263 ms)
-   [c_custkey]->c_name#1.0   [c_custkey]->c_address#1.0   ...
-```
-
-| check | result |
+| file | purpose |
 |---|---|
-| builds offline | yes — every SNAPSHOT dependency resolves from the local `.m2` |
-| installed artifact | `de.metanome.algorithms.hyfd:HyFD:1.2-Partial` |
-| source vs `HEAD` (branch `partial`) | clean; only `target/` differs |
-| library API | `new HyFD()` + `setResultReceiver(ResultCache)` + `execute()` |
-| partial mode | works — threshold 0.95 yields 47 FDs against 46 at 1.0 |
-| result degree | carried on each result (`#1.0`), so partial FDs report coverage |
+| `src/HyFdMultiModel.java` | runs HyFD-Partial on one source |
+| `src/CompleteMatchDiscovery.java` | complete FD/UCC enumeration over `.mscope` files up to an arity bound |
+| `run-multimodel.sh` | `HyFdMultiModel` with the shared classpath |
+| `run-metalevel.sh` | `HyFdMultiModel` over every observation set of a meta-level export |
 
-Blocking nothing. Two things to tidy:
+## Usage
 
-- `target/` is tracked in git (27 dirty `.class` files); it should be ignored.
-- `Runner` hardcodes `F:\metaserve\io\data\` and appends timings to the system temp dir. The
-  library path above bypasses it, so this only matters if the Runner is used directly.
+Build first (`./run.sh build-upstream`, then `./run.sh build` or `source core/adapters/build.sh`).
 
-Companion: UCC discovery is HyUCC, see `ucc/README.md` — same `1.2-Partial` relaxation model, same bridge, all three stores.
-`UniqueColumnCombination` result type in this checkout.
-
-## Multi-model ingestion — yes, via the bridge
-
-HyFD reads all three stores through `core/adapters/MetanomeBridge`, with **no change to HyFD**.
-See `core/adapters/README.md` for the measurements and the driver conflict.
-
-```
+```bash
+# one source: postgres <schema> <table> | file <path.csv> -
 ./fd/run-multimodel.sh postgres public customer 1.0
-./fd/run-multimodel.sh mongo    shop   orders   1.0
-./fd/run-multimodel.sh neo4j    neo4j  Part     1.0
+./fd/run-multimodel.sh file "$WORK_ROOT/mm_tpch/metalevel/<set>.csv" - 1.0 out.fds
+
+# every observation set of an export (default: $WORK_ROOT/unibench/metalevel)
+./fd/run-metalevel.sh 1.0 "$WORK_ROOT/mm_tpch/metalevel"
 ```
 
-One behavioural note: partial mode costs time on wide inputs. `shop.orders` (17 extractors) takes
-1.9 s at θ=1.0 and 20.2 s at θ=0.95, because lowering the threshold keeps far more candidate FDs
-alive through the lattice traversal. Fewer results (587 vs 735), much more work — the opposite of
-the IND side, where the partitioned strategy proved insensitive to ρ. Worth measuring properly
-before the paper quotes FD runtimes.
+`HyFdMultiModel <postgres|mongo|neo4j|file> <a> <b> [threshold] [dumpFile]` prints the extractor
+and FD counts and a capped listing; with `dumpFile` the full result is written one FD per line as
+`[lhs,...]->rhs#degree`. Document and graph stores are read from their meta-level export (`file`),
+not directly. For a `.mscope` input the run is delegated to `CompleteMatchDiscovery`, which requires
+the dump file and enumerates determinants up to `-Dmm.maxArity` (default 3).
+
+`experiments/run/run_all.sh <exportDir> <threshold> <logDir>` runs SPIND, HyFD-Partial and
+HyUCC-Partial over one export. The profile reads FD dumps from `<set>.fds` files beside each
+observation set, as written by `experiments/run/genuineness_sweep.py` and
+`experiments/run/inter_model_fd.py`.
+
+## Limitations
+
+- The reported FDs are discovered at θ = 1; the partial mode (θ < 1) is available but not used for
+  them.
+- Lowering the threshold increases run time on wide inputs, since more candidate FDs stay alive
+  during the lattice traversal.
