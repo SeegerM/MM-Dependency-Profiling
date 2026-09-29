@@ -41,7 +41,7 @@ implements the paper's approach:
 All three algorithms relax on the same axis, a violation budget of `(1 - threshold) × |rows|`, so
 partial INDs, FDs and UCCs are directly comparable.
 
-## Results at a glance
+## Results
 
 On UniBench (34 dependencies labelled by a third party), the scope-aware representation and relaxed
 validity solve different problems. Only together do they recover everything:

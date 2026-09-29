@@ -218,25 +218,3 @@ file that holds the number.
 | §6 Scalability | MusicBrainz and IMDB (full) runtimes | `cost-and-arity.txt` | `cost_and_arity.py` |
 | §6 Scalability | ER'25 phase timings | `er25-timing.txt` | `er25_timing.py` |
 | Tab. 2 | the twelve finding kinds | — | defined in `profile/hp_records.py` |
-
-## 5. Known gaps
-
-These steps produced numbers in the paper but are not yet covered by a script above. They are
-listed so that nobody mistakes them for a failed reproduction.
-
-- **Ground truth for Helsinki Person, Film and University** was written by hand from the source
-  documentation. It is kept in `experiments/datasets/oracles/` and installed by
-  `published_oracles.py`. `unibench/ground_truth.json` is a copy of `unibench_oracle.json`.
-- **Independent relational conversion** (§4.1: identical scope contents and unary FD/UCC results on
-  the 154 scopes of MusicBrainz (full)). `core/metalevel/src/RelationalConversionBaseline.java`
-  is the converter; the comparison run itself is not scripted in this repository.
-- **MMSBench-Net without unions** (the 3/9 rows) was exported before the union was declared in
-  `ExportComs.java`; the current exporter always declares it. `discover_scopes.py` derives the
-  same union from that export, and `scope_discovery_all.sh` scores the result (9/9).
-- **Full-size publisher instances**: `er25_published.sh` scripts the export, discovery and degree
-  check for the 20,000-row reductions; the full-size runs followed the same steps by hand (§3).
-- **UniBench profile inputs** `p50-sim` and `genuineness-0.5.json` are produced by the commands in
-  §3, reconstructed from the scripts' arguments rather than from a recorded log.
-- **Runtimes** in the paper come from specific runs; a rerun reproduces them only approximately.
-- **ER'25 image build** (`scripts/setup-baselines.sh er25`) has not yet been re-run from the moved
-  `baselines/er25/` files.
