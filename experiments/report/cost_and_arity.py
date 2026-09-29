@@ -1,0 +1,171 @@
+"""Discovery cost and result arity per instance.
+
+Puts every instance on the same axes (scopes, extractors, observations, inclusions per arity, IND
+time). Timing is read from the run logs rather than re-measured; an instance without a matching log
+shows a dash.
+
+usage: cost_and_arity.py [--work=$WORK_ROOT] [--out=paper/tables/cost-and-arity.txt]
+"""
+import json
+import re
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+import paths  # noqa: E402
+
+HERE = Path(__file__).resolve().parents[2]
+TRAILING_COMMA = re.compile(r",\s*([}\]])")
+TOOK = re.compile(r"discovery took (\d+) ms")
+
+# (label, rho, export, unary results, n-ary results or None, log or None)
+# rho is carried because one corpus can have several runs with different costs.
+INSTANCES = [
+    ("TPC-H", 1.0, "mm_tpch/metalevel", "compare/mm-1.0/ind-results",
+     "mm_tpch/nary--1", "compare/mm-1.0/ind.log"),
+    ("UniBench", 0.5, "unibench/metalevel", "unibench/meta-results-0.5",
+     "unibench/nary--1", "unibench/nary.log"),
+    ("IMDB", 1.0, "imdb/metalevel", "imdb/eq-1.0-n1", "imdb/nary", None),
+    ("MusicBrainz", 1.0, "musicbrainz/metalevel", "musicbrainz/eq-1.0-n1",
+     "musicbrainz/nary", None),
+    ("IMDB (full)", 0.999, "imdb-full/metalevel", "imdb-full/eq-0.999-n1",
+     "imdb-full/nary", None),
+    # The timed IMDB (full) run is the exact one, not the 0.999 run above.
+    ("IMDB (full)", 1.0, "imdb-full/metalevel", "compare/imdbfull-1.0/ind-results",
+     None, "compare/imdbfull-1.0/ind.log"),
+    ("MusicBrainz (full)", 1.0, "musicbrainz-full/metalevel", "musicbrainz-full/eq-1.0",
+     "musicbrainz-full/nary2", "compare/mbfull-1.0/ind.log"),
+    ("MMSBench-Net", 1.0, "coms/metalevel", "coms/meta-results-1.0", None,
+     "coms/ind-1.0.log"),
+    ("MovieLens", 0.5, "movielens/metalevel", "movielens/meta-results-0.5",
+     "movielens/nary", "movielens/ind-0.5.log"),
+    ("Helsinki Patent", 0.5, "hpatent/metalevel", "hpatent/meta-results-0.5",
+     "hpatent/nary", "hpatent/ind-0.5.log"),
+    ("Helsinki Person", 0.5, "hperson/metalevel", "hperson/meta-results-0.5/ind-results",
+     None, "hperson/meta-results-0.5/ind.log"),
+    ("Helsinki Film", 0.5, "hfilm/metalevel", "hfilm/meta-results-0.5/ind-results",
+     None, "hfilm/meta-results-0.5/ind.log"),
+    ("Helsinki Univ.", 0.5, "huniversity/metalevel", "huniversity/meta-results-0.5/ind-results",
+     None, "huniversity/meta-results-0.5/ind.log"),
+    ("ListenBrainz", 0.5, "listenbrainz/metalevel", "listenbrainz/meta-results-0.5",
+     "listenbrainz/nary", "listenbrainz/ind-0.5.log"),
+]
+
+
+def flag(name, default=None):
+    return next((a.split("=", 1)[1] for a in sys.argv[1:] if a.startswith("--" + name + "=")),
+                default)
+
+
+def shape(export):
+    """Scopes, extractors and observations, from the catalog rather than by re-reading the data."""
+    path = Path(export) / "catalog.json"
+    if not path.exists():
+        return None
+    catalog = json.loads(path.read_text(encoding="utf-8"))
+    return (len(catalog),
+            sum(int(e["columns"]) for e in catalog),
+            sum(int(e["rows"]) for e in catalog))
+
+
+def count_inclusions(path):
+    """How many inclusions one result file states."""
+    if not Path(path).exists():
+        return None
+    text = TRAILING_COMMA.sub(r"\1", Path(path).read_text(encoding="utf-8"))
+    return sum(len(pind["referenced"])
+               for relation in json.loads(text)
+               for pind in relation.get("pINDs", []))
+
+
+def arities(directory):
+    """Inclusions per arity, from whichever k-ary files the n-ary run produced."""
+    if directory is None or not Path(directory).exists():
+        return {}
+    found = {}
+    for path in sorted(Path(directory).glob("*-ary_pINDs.json")):
+        match = re.match(r"(\d+)-ary", path.name)
+        if not match:
+            continue
+        count = count_inclusions(path)
+        if count:
+            found[int(match.group(1))] = count
+    return found
+
+
+FOUND = re.compile(r"Found (\d+) pINDs at level 1")
+
+
+def seconds(log, expected):
+    """The run's own reported time, but only when the log belongs to the reported result set.
+
+    A log is used only when its level-1 inclusion count matches `expected`; a stale log from an
+    earlier run of the same instance yields None.
+    """
+    if log is None or not Path(log).exists():
+        return None
+    text = Path(log).read_text(encoding="utf-8", errors="replace")
+    counts = FOUND.findall(text)
+    if expected is not None and counts and int(counts[-1]) != expected:
+        return None
+    matches = TOOK.findall(text)
+    return int(matches[-1]) / 1000.0 if matches else None
+
+
+def main():
+    work = Path(flag("work", str(paths.WORK_ROOT)))
+    out = Path(flag("out", str(HERE / "paper" / "tables" / "cost-and-arity.txt")))
+
+    lines = [
+        "# Discovery cost and result arity per instance.",
+        "# Generated by experiments/report/cost_and_arity.py.",
+        "#",
+        "# Two things drive cost and they are separable: observations decide what must be",
+        "# materialised and read, extractors decide how large the candidate space is. Arity is",
+        "# reported beside them because every recall figure in the paper is over unary",
+        "# dependencies, and what an n-ary run adds differs by instance.",
+        "#",
+        "# A dash is an absent measurement, not a zero: no n-ary run, or no log kept for the run",
+        "# that produced the reported result set.",
+        "",
+        "  %-20s %6s %7s %7s %14s %8s %7s %7s %9s"
+        % ("instance", "rho", "scopes", "|E|", "observations", "unary", "2-ary",
+           "3-ary", "IND time"),
+    ]
+    for label, rho, export_rel, unary_rel, nary_rel, log_rel in INSTANCES:
+        form = shape(work / export_rel)
+        if form is None:
+            lines.append("  %-20s not present" % label)
+            continue
+        scopes, extractors, observations = form
+        unary = count_inclusions(work / unary_rel / "1-ary_pINDs.json")
+        by_arity = arities(work / nary_rel if nary_rel else None)
+        took = seconds(work / log_rel if log_rel else None, unary)
+        lines.append("  %-20s %6g %7d %7d %14s %8s %7s %7s %9s"
+                     % (label, rho, scopes, extractors, "{:,}".format(observations),
+                        "-" if unary is None else "{:,}".format(unary),
+                        by_arity.get(2, "-" if not by_arity else 0),
+                        by_arity.get(3, "-" if not by_arity else 0),
+                        "-" if took is None else "%.1fs" % took))
+
+    lines += [
+        "",
+        "## reading",
+        "  Cost tracks observations and extractors separately. MusicBrainz (full) carries 1,196",
+        "  extractors over 30M observations; IMDB (full) carries 39 over 203M. The first has the",
+        "  larger candidate space and the second the larger read, and their runtimes reflect which",
+        "  of the two dominates rather than the size of the corpus.",
+        "",
+        "  Arity is not a property of the method but of how an instance was normalised. UniBench",
+        "  yields binary and ternary inclusions because its stores repeat composite keys; TPC-H,",
+        "  normalised by its generator, yields none above arity one. An instance with no n-ary run",
+        "  shows dashes rather than zeros, since the two are not the same claim.",
+    ]
+    out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print("\n".join(lines[11:]))
+    print("\nwritten to " + str(out))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

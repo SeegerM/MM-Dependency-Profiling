@@ -1,13 +1,7 @@
 """Formats the multi-model scalability timings and reports how each phase grows.
 
-Growth relative to the data is what matters here, not absolute milliseconds: the question the
-paper needs answered is whether the meta level is a fixed translation cost or a scaling one, and
-which of the four discovery phases dominates as an instance grows.
-
-One caveat is reported alongside, because it changes how the FD and UCC columns should be read.
-Both run once per observation set in a separate JVM, so at these sizes their totals are dominated
-by process startup -- seven JVMs at roughly half a second each. Their growth is meaningful; their
-absolute values are an upper bound and not comparable with the single-process phases.
+FD and UCC discovery run in a separate JVM per observation set, so at small sizes their totals are
+dominated by JVM startup: their growth is meaningful, their absolute values are an upper bound.
 
 usage: scale_report.py [timings.jsonl]
 """
