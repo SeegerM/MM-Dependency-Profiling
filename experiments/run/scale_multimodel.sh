@@ -3,17 +3,12 @@
 #
 #   ./experiments/run/scale_multimodel.sh [orders...]
 #
-# The performance argument in the paper is about multi-model workloads -- extractor-rich relative
-# to their data volume -- while the scaling numbers reported so far come from single-model
-# relational corpora. This measures the setting the argument is about.
-#
-# Each phase is timed separately on purpose. Export is now the mandatory path for document and
-# graph stores, so if it dominates, the cost has been moved rather than removed and the paper
-# should say so.
+# Each phase is timed separately, since export is the mandatory path for document and graph stores
+# and its cost must be visible next to discovery.
 set -uo pipefail
 cd "$(dirname "$0")/../.."
 source core/adapters/build.sh
-source config/paths.env
+source config/env.sh
 
 SIZES=("$@")
 [ ${#SIZES[@]} -eq 0 ] && SIZES=(10000 20000 40000 80000)
@@ -28,12 +23,12 @@ for orders in "${SIZES[@]}"; do
   EXPORT="$DATA/metalevel"
   echo "=== $orders orders"
 
-  python experiments/datasets/build_dataset.py "--orders=$orders" "--out=$(cygpath -m "$DATA" 2>/dev/null || echo "$DATA")" > "$OUT/gen-$orders.log" 2>&1
+  python experiments/datasets/build_dataset.py "--orders=$orders" "--out=$(mm_path "$DATA")" > "$OUT/gen-$orders.log" 2>&1
   bash experiments/datasets/load_stores.sh "$DATA" > "$OUT/load-$orders.log" 2>&1
 
   t0=$(ms)
-  java -cp "$MM_CP" -Dspind.connections="$(pwd -W)/config/connections.properties" \
-       ExportTpch "$(cygpath -m "$EXPORT" 2>/dev/null || echo "$EXPORT")" \
+  java -cp "$MM_CP" -Dspind.connections="$MM_REPO/config/connections.properties" \
+       ExportTpch "$(mm_path "$EXPORT")" \
        > "$OUT/export-$orders.log" 2>&1
   t_export=$(( $(ms) - t0 ))
 

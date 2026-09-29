@@ -1,13 +1,8 @@
 """Checks a converted corpus against the foreign keys its source schema declares.
 
-experiments/datasets/build_multimodel.py carries a corpus's own foreign keys into the converted
-instance as ground truth. Those keys are neither ours nor a benchmark author's guess about what
-should hold: they are the schema the data was published with, which makes recall here a statement
-about real dependencies surviving a change of data model.
-
-Both coverage readings are reported. A key spread across a collection-valued field can have very
-different set and bag coverage, and which one a threshold should be compared against depends on
-the question -- see the heterogeneity metric discussion.
+experiments/datasets/build_multimodel.py carries the corpus's published foreign keys into the
+converted instance as ground truth. Both set and bag coverage are reported, since a key spread
+across a collection-valued field can differ strongly between the two.
 
 usage: verify_converted.py <instanceDir> [--rho=1.0] [--tau=] [--nary=1]
   instanceDir holds metalevel/ and ground_truth.json.
@@ -48,9 +43,8 @@ def discovered(result_dir):
     return found
 
 
-# One pass per observation set, not one per dependency. On the full IMDB instance a single scope
-# holds 56 million rows and several dependencies read from it; rescanning per dependency turns a
-# check into the slowest part of the experiment.
+# One pass per observation set, not one per dependency: a single scope can hold tens of millions
+# of rows that several dependencies read from.
 _COLUMN_CACHE = {}
 _needed = set()
 

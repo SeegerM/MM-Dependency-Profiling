@@ -1,15 +1,9 @@
 """How much of a large inclusion result survives an interestingness filter, and at what cost.
 
-Discovery over a real schema returns far more inclusions than the schema declares foreign keys:
-most columns of small cardinality are contained in most columns of large cardinality, by
-coincidence rather than by design. That is a property of the candidates, not of the algorithm, so
-it belongs in a result filter -- the same argument as experiments/run/filter_uninformative.py,
-applied where the numbers are large enough to matter.
-
-The sweep reports what a minimum-cardinality threshold on the dependent side costs and buys. Recall
-is measured against the corpus's own foreign keys; the size of the surviving set says how much
-remains for a human or a downstream tool to look at. A threshold is only defensible when there is a
-range over which recall is flat, so the range is what this prints.
+Most low-cardinality columns are contained in most high-cardinality columns by coincidence, so a
+real schema yields far more inclusions than declared foreign keys. The sweep applies a
+minimum-distinct-values threshold on the dependent side and reports the surviving set size and the
+recall against the corpus's declared foreign keys, including the range over which recall is flat.
 
 usage: filter_sweep.py <instanceDir> <resultDir> [--thresholds=1,2,5,10,...]
 """
@@ -64,10 +58,7 @@ def main():
     found = discovered()
     counts = distinct_counts()
 
-    # An all-null column is vacuously included in everything, so it produces inclusions that are
-    # true and say nothing. This is the same artifact the array-container column of nulls used to
-    # produce, arriving here on its own: a real schema has nullable columns that happen to be
-    # entirely unused. Separating them is not filtering, it is declining to count a tautology.
+    # An all-null column is vacuously included in everything, so its inclusions are counted apart.
     vacuous = {pair for pair in found if counts.get(pair[0], 0) == 0}
     live = found - vacuous
     vacuous_keys = {pair for pair in oracle if counts.get(pair[0], 0) == 0}

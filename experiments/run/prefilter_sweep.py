@@ -1,22 +1,12 @@
 """Applies foreign-key prefiltering to a discovery result and reports what survives.
 
-A discovery run over a real schema returns far more inclusions than anyone can read: MusicBrainz
-returns 198,059. The profile is meant to support user-informed decisions, so a result set that size
-is not obviously better than the raw data it describes. The question is therefore not only how many
-inclusions hold but how few a reader has to look at.
+Two threshold-free rules from foreign-key detection, both using metadata the profile carries:
 
-Two rules from the foreign-key detection literature apply directly here, and both consume metadata
-the profile already carries:
+  non-vacuous    an inclusion with an empty dependent is a tautology.
+  referenced key a foreign key references a unique, null-free column, so inclusions whose
+                 referenced side is not unique are dropped (Jiang and Naumann, HoPF).
 
-  non-vacuous    an empty observation is contained in every other, so an inclusion with an empty
-                 dependent is a tautology rather than a candidate.
-  referenced key a foreign key references a primary key, which is a unique column combination
-                 without nulls. Inclusions whose referenced side is not unique cannot be one
-                 (Jiang and Naumann, HoPF).
-
-Neither is a threshold, which matters: the minimum-cardinality filter this replaces has no
-defensible cut on a real schema, because genuine relationship tables have single-valued dependent
-columns. These two rules discard only candidates that are disqualified by definition.
+Recall is reported against the corpus's declared foreign keys.
 
 usage: prefilter_sweep.py <instanceDir> <resultDir>
 """

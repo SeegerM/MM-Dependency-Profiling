@@ -1,27 +1,17 @@
 """Discovers functional dependencies over join-induced scopes that span two stores.
 
-An FD whose determinant and dependent live in different data sources cannot be stated over a plain
-scope, because a scope belongs to one source. Over the join-induced scope p_s |><|_~ p_t it can.
-This script builds those scopes and runs HyFD-Partial over them.
+An FD whose determinant and dependent live in different stores cannot be stated over a single
+scope, but it can over the join-induced scope p_s |><|_~ p_t. This script builds those scopes and
+runs HyFD-Partial over them.
 
-Two conditions decide whether the construction says anything.
+Candidate joins are the cross-store INDs whose referenced attribute is unique; otherwise the join
+fans out and produces FDs that are artifacts of multiplicity. An FD X -> Y over the join is
+reported as inter-model only when Y is outside the closure of X under the join equality, the UCC
+on the referenced side, and the FDs holding within each side.
 
-The first is well-definedness. Without a UCC on the referenced side, one match on the left pairs
-with many on the right and the fan-out manufactures dependencies that are artifacts of
-multiplicity. Candidate joins are therefore exactly the cross-store INDs whose referenced
-attribute is a key -- which is why the pipeline runs IND, then UCC, then FD.
-
-The second is novelty, and it is the one that decides whether inter-model FDs are worth reporting
-at all. Most FDs over a join-induced scope are logical consequences of things already known: the
-join equality L.k = R.k, the UCC on R.k, and the FDs that hold within each side on its own. An FD
-X -> Y is a *finding* only when Y is outside the closure of X under those rules. Counting the rest
-would be counting theorems. This script computes the closure and reports both numbers.
-
-The two thresholds are not the same knob and must not be tied together. The IND coverage decides
-which joins exist; the FD threshold decides how partial a dependency over a join may be. Running
-both at 0.95 would let HyFD report that a nation determines a supplier's name -- false, but within
-budget on 10,000 rows. The default is an exact FD over a possibly partial join, so that the
-coverage an FD inherits is reported rather than absorbed.
+The IND coverage (--ind-rho) decides which joins exist and the FD threshold (--fd) how partial an
+FD over a join may be; they are deliberately separate. The default is an exact FD over a possibly
+partial join, so the coverage an FD inherits is reported rather than absorbed.
 
 usage: inter_model_fd.py [--ind-rho=1.0] [--fd=1.0] [exportDir] [logDir]
   requires MM_CP; run  source core/adapters/build.sh  first.
@@ -46,16 +36,15 @@ RHO = flag("ind-rho", "1.0")
 FD_THRESHOLD = flag("fd", "1.0")
 EXPORT = Path(POSITIONAL[0]) if POSITIONAL else paths.DATASET / "metalevel"
 LOGS = (Path(POSITIONAL[1]) if len(POSITIONAL) > 1
-        else Path(f"F:/temp/multimodel/compare/mm-{RHO}"))
-OUT = Path("F:/temp/multimodel/compare/joins")
+        else (paths.WORK_ROOT / f"compare/mm-{RHO}"))
+OUT = (paths.WORK_ROOT / "compare/joins")
 
 TRAILING_COMMA = re.compile(r",\s*([}\]])")
 # Metanome prints an FD as  [rel.a, rel.b]->rel.c#degree  with one relation name throughout.
 METANOME_FD = re.compile(r"^\[(.*)\]->(.*?)(?:#[\d.]+)?$")
 MAX_ROWS = 400_000
-# A join predicate over a handful of values is not a join. o_shippriority is constant in TPC-H and
-# is included in every key column, so it would pair all 40,000 orders with one nation. Same
-# justification as filter_uninformative.py, applied to the predicate rather than to the result.
+# A join predicate over a handful of values is not a join: o_shippriority is constant in TPC-H and
+# is included in every key column, so it would pair all 40,000 orders with one nation.
 MIN_DISTINCT = 10
 
 
@@ -263,9 +252,8 @@ def side_rules(name, files, side, cache, classpath):
     """FDs holding within one observation set, with columns renamed to their side in the join."""
     if (name, side) not in cache:
         columns, _ = read_set(files[name])
-        # A one-column observation set has no non-trivial FD, and HyFD's sampler indexes a second
-        # attribute unconditionally: it throws ArrayIndexOutOfBounds rather than returning nothing.
-        # Scopes of exactly one column are common here -- every scalar array is one.
+        # A one-column observation set has no non-trivial FD, and HyFD's sampler throws
+        # ArrayIndexOutOfBounds on one (every scalar array scope has one column).
         lines = run_hyfd(files[name], FD_THRESHOLD, classpath) if len(columns) > 1 else []
         cache[(name, side)] = parse_dump(lines, columns, rename=lambda c: f"{side}_{c}")
     return cache[(name, side)]

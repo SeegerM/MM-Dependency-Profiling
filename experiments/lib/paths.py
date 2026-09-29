@@ -42,7 +42,6 @@ WORK_ROOT = _resolve("WORK_ROOT")
 RESULT_ROOT = _resolve("RESULT_ROOT")
 
 # Repo-relative, same on every machine.
-RESULTS = REPO / "experiments" / "results"
 TABLES = REPO / "paper" / "tables"
 
 # The generated three-model dataset and its ground truth manifest.

@@ -1,0 +1,12 @@
+[
+  {
+    "name": "example-polymorphic-attachment",
+    "reason": "an attachment belongs to an invoice or to an order; both keys come from one id space",
+    "scopes": [
+      ["pg.invoice", ["id", "total"], [["inv-1", "10"], ["inv-2", "20"]]],
+      ["mongo.order", ["id"], [["ord-1"], ["ord-2"]]],
+      ["pg.attachment", ["owner"], [["inv-1"], ["ord-2"], ["ord-1"]]]
+    ],
+    "needed": [["id", ["mongo.order", "pg.invoice"]]]
+  }
+]

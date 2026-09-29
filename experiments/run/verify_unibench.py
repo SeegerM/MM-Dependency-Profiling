@@ -1,9 +1,7 @@
 """Scores SPIND's discovery against the UniBench-IND oracle.
 
-Unlike the TPC-H-derived dataset, this ground truth was written by someone else, so recall here is
-an external measurement rather than a check that we found what we planted. The oracle labels a
-dependency as always holding or not always holding but gives no coverage value, so the measured
-degree is reported alongside its label rather than compared to one.
+The oracle is external to this work. It labels each dependency as always holding or not, without
+a coverage value, so the measured degree is reported alongside the label.
 
 usage: verify_unibench.py [threshold]
 """
@@ -18,8 +16,7 @@ import paths
 THRESHOLD = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("--") else "1.0"
 ORACLE = paths.WORK_ROOT / "unibench" / "unibench_oracle.json"
 # A meta-level run reports each observation set under its scope, e.g. neo4j:Tag@vendors. The
-# oracle names attributes without a scope, so the suffix is dropped when matching. That is a naming
-# reconciliation, not a relaxation: the attribute is the same one either way.
+# oracle names attributes without a scope, so the suffix is dropped when matching.
 SCOPED = "--metalevel" in sys.argv
 RESULTS = (paths.WORK_ROOT / "unibench" /
            (f"meta-results-{THRESHOLD}" if SCOPED else f"results-{THRESHOLD}") / "1-ary_pINDs.json")
@@ -27,10 +24,8 @@ SCOPE_SUFFIX = re.compile(r"@[^.]*")
 
 
 
-# SPIND's result writer emits `"attributes":[...],}` for any relation that contributed no pINDs --
-# a trailing comma, so the file is not valid JSON. Present in the pinned commit and still present
-# on the branch carrying the later work; reported upstream. Repair it rather than fail, so a
-# reader of these results is not blocked on a writer fix.
+# SPIND's result writer emits `"attributes":[...],}` for any relation that contributed no pINDs,
+# a trailing comma that makes the file invalid JSON; it is removed before parsing.
 TRAILING_COMMA = re.compile(r",\s*([}\]])")
 
 

@@ -1,18 +1,14 @@
 """Calibrates the Heterogeneity Profile: does each component measure the thing it names?
 
-A profile whose numbers move when the data changes is not yet a profile whose numbers mean
-anything. What has to hold is stronger and testable: turn one knob, and the component named after
-it moves while the others stay put.
-
-Three knobs, each changing exactly one kind of heterogeneity:
+Each knob changes one kind of heterogeneity; the component named after it should move while the
+others stay put.
 
   rename        one store's extractors are renamed; values untouched
   perturb       one store's values receive single-character edits; names untouched
   denormalize   two observation sets of one store are replaced by their join; both untouched
 
-FD and UCC counts are taken at threshold 1.0. HyFD-Partial's violation accounting is wrong for
-composite determinants below that (see experiments/run/verify_partial_fds.py), so a structural
-component read off partial FDs would be measuring the defect rather than the data.
+FD and UCC counts are taken at threshold 1.0, since HyFD-Partial's violation accounting is not
+reliable for composite determinants below it.
 
 usage: profile_calibration.py [--export=<clean>] [--out=<dir>]
   requires MM_CP; run  source core/adapters/build.sh  first.
@@ -108,10 +104,8 @@ def main():
         data = discover(export, name)
         stores = data["stores"]
         extractors = sum(s["extractors"] for s in stores.values())
-        # The first three components are expressed as rates over the discovered links rather than
-        # as counts. A count conflates the component with how many links exist at all, so any knob
-        # that changes discoverability would appear to move every component at once -- which is
-        # exactly what perturbing values does, since it breaks four links outright.
+        # The first three components are rates over the discovered links, not counts, so a knob
+        # that changes how many links are found does not move every component at once.
         links = data["summary"]["links"] or 1
         rows.append((name, {
             "schema (renamed)": data["summary"]["renamed"] / links,
