@@ -1,0 +1,40 @@
+A datastorage with no attributes of its own aborts the whole extraction.
+
+UACFinder.start_search iterates every datastorage the importer registered and calls
+_find_UACs on it, which asks get_max_entry_number for the largest entry number among
+its attributes. That builds `... WHERE attribute_id IN ({combination_string})`, and for
+an empty attribute list the string is empty, so the statement reads `IN ()`. MariaDB
+rejects it, DBConnector.query prints the error and returns None, and the caller
+subscripts None:
+
+    TypeError: 'NoneType' object is not subscriptable
+
+and the job goes to `aborted`. Nothing downstream runs -- no INDs, no keys, no
+references -- so the failure is total rather than partial.
+
+A nested document path whose children are all objects is enough to trigger it. The
+importer registers such a path as a datastorage (it has a parent_id and its own
+children) but records no attribute against it, because it has no scalar leaf of its
+own. UniBench happens to contain no such path. MMSBench-Net's log documents contain
+two, so the extractor cannot run on that corpus at all as shipped.
+
+The guard below is the reading the code already assumes everywhere else: a datastorage
+with no attributes has no unique attribute combination, so there is nothing to search
+and the search returns immediately. It changes no result on any input that did not
+previously crash, which is why it is safe to use for a baseline comparison -- without
+it there would be no baseline to compare against.
+
+--- a/services/UniqueAttributecombinations.py
++++ b/services/UniqueAttributecombinations.py
+@@
+         attributes_to_remove = []
+
++        # A datastorage with no attributes -- a nested document path whose children are
++        # all objects -- has no unique attribute combination to find. Without this the
++        # empty list reaches get_max_entry_number and becomes `IN ()`, which is a syntax
++        # error, and the job aborts before any dependency is reported.
++        if not attributes:
++            return
++
+         # Determine number of entries
+         number_of_entries = self.connector.get_max_entry_number(attributes)

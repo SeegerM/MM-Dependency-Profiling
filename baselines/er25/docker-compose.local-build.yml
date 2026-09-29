@@ -1,0 +1,25 @@
+# Local override for running the ER'25 baseline (ref-seeker-extractor) here.
+#
+#   docker compose -p ref-seeker-extractor \
+#     -f upstream/ref-seeker-extractor/docker-compose.yml \
+#     -f baselines/er25/docker-compose.local-build.yml up -d --build
+#
+# (scripts/setup-baselines.sh runs exactly this.) Paths are relative to the first file's directory.
+#
+#  * The published ref-seeker-extractor image on ghcr.io is private
+#    ("error from registry: unauthorized"), so the service is built from source.
+#  * Dockerfile.local pins Python 3.12 and applies apply-patches.py; see the comments there.
+#  * Only the extractor and its MariaDB meta level are started. The stores under test are
+#    supplied per request, so the shipped test-data containers are not used -- they would also
+#    collide on 5432/27017/7687 with the stores this project already runs.
+services:
+  ref-seeker-extractor:
+    image: ref-seeker-extractor:local
+    build:
+      context: .
+      dockerfile: ../../baselines/er25/Dockerfile.local
+      additional_contexts:
+        patches: ../../baselines/er25
+    extra_hosts:
+      # Lets the container reach stores published on the host's ports.
+      - "host.docker.internal:host-gateway"

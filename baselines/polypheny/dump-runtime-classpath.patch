@@ -1,0 +1,18 @@
+diff --git a/build.gradle b/build.gradle
+index cb4f0a0..252558f 100644
+--- a/build.gradle
++++ b/build.gradle
+@@ -285,3 +285,13 @@ idea {
+         }
+     }
+ }
++
++// Added locally: emit the runtime classpath so an external driver can reuse the
++// scenario generator without going through Gradle.
++tasks.register('dumpRuntimeClasspath') {
++    doLast {
++        def out = file("$buildDir/runtime-cp.txt")
++        out.text = sourceSets.main.runtimeClasspath.files.join(File.pathSeparator)
++        println "wrote ${out}"
++    }
++}

@@ -1,0 +1,56 @@
+# Local build of the ref-seeker-extractor service.
+#
+# Two changes from ref-seeker-extractor/Dockerfile, both forced by the environment
+# rather than by choice:
+#
+#  1. `FROM python:3` now resolves to 3.14, where TarFile.chown gained a required
+#     argument. cassandra_driver==3.29.2 fails to build its wheel there:
+#         TypeError: TarFile.chown() missing 1 required positional argument
+#     The pinned requirements date from late 2024, so the image is pinned to the
+#     Python of that era. No dependency version is changed.
+#
+#  2. The build context is the ref-seeker-extractor checkout (upstream/ref-seeker-extractor),
+#     so the source is copied from its ref-seeker-extractor/ subdirectory; the patch script
+#     comes from a second build context named "patches" (baselines/er25).
+#  3. The shipped WordNet corpus is read by byte offset: nltk seeks into data.noun
+#     at offsets listed in index.noun. A Windows checkout of this repository
+#     converts those files to CRLF, which shifts every offset by one byte per
+#     preceding line, so every lookup misses. nltk then warns
+#         No WordNet synset found for pos=n at offset=...
+#     and returns lists of None, and ForeignkeyFinder dies on
+#         AttributeError: 'NoneType' object has no attribute 'wup_similarity'
+#     Restoring LF endings repairs the corpus. This is a checkout artifact, not a
+#     defect of the framework; on a Linux checkout the files are already LF and
+#     the `tr` below is a no-op.
+FROM python:3.12
+
+WORKDIR /code
+COPY ref-seeker-extractor/ .
+
+RUN set -eu; \
+    cd nltk_data/corpora/wordnet; \
+    for f in *; do \
+        if [ -f "$f" ]; then tr -d '\r' < "$f" > /tmp/wn && mv /tmp/wn "$f"; fi; \
+    done
+
+#  4. UACFinder aborts the whole job when a datastorage has no attributes of its own,
+#     which a nested document path whose children are all objects produces. See
+#     empty-datastorage.patch for the diagnosis. Applied here rather than reported as
+#     a crash, so the framework can be run as a baseline instead of only failing.
+COPY --from=patches apply-patches.py /tmp/apply-patches.py
+RUN python /tmp/apply-patches.py
+
+RUN mkdir -p results
+
+RUN apt-get update \
+    && apt-get install -y \
+    libev4 \
+    libev-dev \
+    gcc \
+    python3-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --upgrade pip
+RUN pip install -r requirements.txt --no-cache-dir
+
+CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8001"]
